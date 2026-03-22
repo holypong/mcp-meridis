@@ -1,0 +1,10 @@
+{
+  "redis": {
+    "host": "172.22.95.231",
+    "port": 6379
+  },
+  "redis_keys": {
+    "read": "meridis_mgr_pub",
+    "write": "meridis_mcp_pub"
+  }
+}
