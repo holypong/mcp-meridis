@@ -17,7 +17,7 @@ class WalkParams:
     frame_interval: float = param_field(0.010, "1フレームあたりの時間間隔（固定）[秒] (10ms)", "float")
     base_height: float = param_field(0.29, "ロボットの初期配置高さ[m]", "float")
     phase_offset: float = param_field(np.pi, "左右の足の位相差[rad]", "float")
-    init_wait_time: float = param_field(2.0, "初期待機時間[秒]", "float")
+    init_wait_time: float = param_field(0.0, "初期待機時間[秒]", "float")
     landing_period_ratio: float = param_field(0.10, "両足着地期間の比率 (周期の%、atm_uvc: TERM_FOOT_LAND)", "float")
     weight_shift_duration_ratio: float = param_field(0.25, "重心移動期間の比率 (周期の%)", "float")
     end_of_simulation: float = param_field(8.0, "シミュレーション終了時間[秒]", "float")
@@ -29,6 +29,7 @@ class WalkParams:
     forward_stride: float = param_field(0.02, "前後方向の歩幅[m]", "float")
     duration: float = param_field(8.0, "動作期間[秒]", "float")
     forward_lean_angle: float = param_field(0.0, "歩行中の前傾角度[度]", "float")
+    shoulder_roll_angle: float = param_field(10.0, "歩行中の両肩ロール角度[度]", "float")
     mix_enable: bool = param_field(False, "ロール角を足首に反映するか", "bool")
     mix_gyro_g: float = param_field(0.001, "ジャイロミキシングゲイン係数", "float")
 
@@ -374,6 +375,13 @@ class WalkController:
             if self.w_sts >= 2 and self.params.forward_lean_angle != 0.0:
                 self.data[35] += self.params.forward_lean_angle
                 self.data[65] += self.params.forward_lean_angle
+
+        # 歩行中は両肩ロール軸を15度回転
+        if self.w_sts >= 1:
+            self.data[24] = float(self.trq_on)
+            self.data[25] = float(self.params.shoulder_roll_angle)
+            self.data[54] = float(self.trq_on)
+            self.data[55] = float(self.params.shoulder_roll_angle)
 
         # Redisからデータを受信（オプション）
         get_data = None

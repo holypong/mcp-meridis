@@ -2,7 +2,7 @@
   "frame_interval": 0.01,
   "base_height": 0.29,
   "phase_offset": 3.141592653589793,
-  "init_wait_time": 2.0,
+  "init_wait_time": 0.0,
   "landing_period_ratio": 0.1,
   "weight_shift_duration_ratio": 0.25,
   "end_of_simulation": 8.0,
@@ -14,6 +14,7 @@
   "forward_stride": 0.02,
   "duration": 8.0,
   "forward_lean_angle": 0.0,
+  "shoulder_roll_angle": 10.0,
   "mix_enable": false,
   "mix_gyro_g": 0.001
 }
