@@ -134,7 +134,7 @@ def set_params_text(text):
             setattr(params_link, k, v)
     
     # パラメータをJSONファイルに保存
-    save_walk_params(params, "walkparam.json")
+    save_walk_params(params, "walkparam-s1.json")
     save_link_params(params_link, "linkparam.json")
     
     return get_params_text()
@@ -201,7 +201,7 @@ buf_index = 0  # インクリメンタルカウンタ
 
 # WalkParamsとLinkParamsはwalk_ctrlからインポート
 # JSONファイルから読み込み（なければデフォルト値を使用）
-params = load_walk_params("walkparam.json")
+params = load_walk_params("walkparam-s1.json")
 print(f"Loaded WalkParams: cycle_duration={params.cycle_duration}")
 
 # Redis設定とクライアント初期化は main() 関数で行う
