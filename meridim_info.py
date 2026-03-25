@@ -1,6 +1,6 @@
 """
-Meridim90 キーインデックス定義
-Meridim90配列の各インデックスとその説明を定義する
+Meridim90 キーインデックス定義とシステム情報
+Meridim90配列の各インデックス・説明の定義、およびシステム情報の生成を担う
 """
 from dataclasses import dataclass, field, fields
 
@@ -115,3 +115,38 @@ def get_meridim_key_meta():
         }
         for f in fields(MeridimKeyParams)
     }
+
+
+def get_key_index_text():
+    """Meridim90キーインデックス一覧をテキストで返す"""
+    meta = get_meridim_key_meta()
+    lines = [f"{k}: {v['index']}  # {v['description']}" for k, v in meta.items()]
+    return '\n'.join(lines)
+
+
+def get_system_info(params_text: str) -> str:
+    """システム情報（キーインデックス・パラメータ・ツール一覧）を一括取得"""
+    return "\n".join([
+        "=== Meridim90 キーインデックス一覧 ===",
+        get_key_index_text(),
+        "",
+        "=== 現在の歩行パラメータとリンクパラメータ ===",
+        params_text,
+        "",
+        "=== 使用可能なツール ===",
+        "- getmrdkey: Meridim90のキーインデックス一覧を取得",
+        "- get_params_text: 現在のパラメータを取得",
+        "- set_params_text: パラメータを一括設定",
+        "- robot_walk: ロボットを歩行させる（duration指定可能）",
+        "- robot_stop: ロボットを停止",
+        "- robot_status: ロボットの状態を確認",
+        "- system_reset: システムリセット",
+        "- get_buf_input: ロボットからの応答データを取得",
+        "- get_buf_output: ロボットへの指令データを取得",
+        "- filesave_buf_input: buf_input(ロボットからの応答)をCSVファイルに保存",
+        "- filesave_buf_output: buf_output(ロボットへの指令)をCSVファイルに保存",
+        "- filepathget_buf_input: buf_input CSVファイルの絶対パスを取得",
+        "- filepathget_buf_output: buf_output CSVファイルの絶対パスを取得",
+        "- get_system_info: システム情報を一括取得（このスキル）",
+        "",
+    ])

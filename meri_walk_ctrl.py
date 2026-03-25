@@ -179,8 +179,8 @@ class WalkController:
         
         # データバッファ
         self.data = [0.0] * msg_size
-        self.output_buf = [[0.0] * msg_size for _ in range(10000)]
-        self.input_buf = [[0.0] * msg_size for _ in range(10000)]
+        self.buf_output = [[0.0] * msg_size for _ in range(10000)]
+        self.buf_input = [[0.0] * msg_size for _ in range(10000)]
         self.buf_index = 0
         
         # スレッド制御
@@ -399,9 +399,9 @@ class WalkController:
             transfer.set_data(redis_key_write, self.data)
 
         # バッファに格納
-        if self.w_sts != 0 and self.buf_index < len(self.output_buf):
-            self.output_buf[self.buf_index] = self.data.copy()
-            self.input_buf[self.buf_index] = get_data.copy() if get_data is not None else [0.0] * self.msg_size
+        if self.w_sts != 0 and self.buf_index < len(self.buf_output):
+            self.buf_output[self.buf_index] = self.data.copy()
+            self.buf_input[self.buf_index] = get_data.copy() if get_data is not None else [0.0] * self.msg_size
             self.buf_index += 1
         
         return self.data, get_data
@@ -423,8 +423,8 @@ class WalkController:
         """歩行を開始"""
         self.mot_sts = self.WALK
         self.data[20] = float(self.trq_on)
-        self.output_buf = [[0.0] * self.msg_size for _ in range(10000)]
-        self.input_buf = [[0.0] * self.msg_size for _ in range(10000)]
+        self.buf_output = [[0.0] * self.msg_size for _ in range(10000)]
+        self.buf_input = [[0.0] * self.msg_size for _ in range(10000)]
         self.buf_index = 0
 
     def stop_walk(self):

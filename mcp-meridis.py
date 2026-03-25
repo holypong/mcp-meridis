@@ -11,8 +11,8 @@ import json
 import argparse
 import dataclasses
 import re
-from walk_ctrl import WalkController, WalkParams, LinkParams, load_walk_params, load_link_params, save_walk_params, save_link_params
-from meridim_keys import MeridimKeyParams, get_meridim_key_meta
+from meri_walk_ctrl import WalkController, WalkParams, LinkParams, load_walk_params, load_link_params, save_walk_params, save_link_params
+from meridim_info import MeridimKeyParams, get_key_index_text, get_system_info as _get_system_info
 
 # 20260103 安定版
 
@@ -78,14 +78,12 @@ TRQ_ON = 1.0            # サーボパワー 0:OFF, 1:ON
 
 # MeridimKeyParamsのインデックスと説明を表示する関数
 def getmrdkey():
-    meta = get_meridim_key_meta()
-    lines = [f"{k}: {v['index']}  # {v['description']}" for k, v in meta.items()]
-    return '\n'.join(lines)
+    return get_key_index_text()
 # Gradio UI: MeridimKeyParamsのインデックス表示タブ
 with gr.Blocks() as mrdkey_block:
     gr.Markdown("""### Meridim90 キーインデックス一覧\n各キーのインデックスと説明を表示します。""")
-    key_box = gr.Textbox(label="MeridimKeyParams", lines=30)
     key_btn = gr.Button("一覧取得")
+    key_box = gr.Textbox(label="MeridimKeyParams", lines=30)
     key_btn.click(fn=getmrdkey, inputs=[], outputs=key_box)
 
 # パラメータ一括取得
@@ -146,10 +144,10 @@ with gr.Blocks() as params_block:
 1. [取得]ボタンで現在値をテキストボックスに表示
 2. 編集後、[設定]ボタンで一括反映
 """)
-    param_box = gr.Textbox(label="Params", lines=20)
     with gr.Row():
         get_btn = gr.Button("取得")
         set_btn = gr.Button("設定")
+    param_box = gr.Textbox(label="Params", lines=20)
     get_btn.click(fn=get_params_text, inputs=[], outputs=param_box)
     set_btn.click(fn=set_params_text, inputs=param_box, outputs=param_box)
 
@@ -196,8 +194,8 @@ foot_ref_pitch = np.radians(0.0)  # 基準となる足首ピッチ角
 data = [0.0] * MSG_SIZE
 
 # バッファ変数
-output_buf = [[0.0] * MSG_SIZE for _ in range(10000)]  # 送信データのバッファ（10000個のdata配列を格納）
-input_buf = [[0.0] * MSG_SIZE for _ in range(10000)]   # 受信データのバッファ（10000個のdata配列を格納）
+buf_output = [[0.0] * MSG_SIZE for _ in range(10000)]  # 送信データのバッファ（10000個のdata配列を格納）
+buf_input = [[0.0] * MSG_SIZE for _ in range(10000)]   # 受信データのバッファ（10000個のdata配列を格納）
 buf_index = 0  # インクリメンタルカウンタ
 
 
@@ -243,7 +241,7 @@ def get_params_metadata():
 
 
 def background_motion_control():
-    global MOT_STS, stop_background, data, t, output_buf, buf_index, w_sts
+    global MOT_STS, stop_background, data, t, buf_output, buf_input, buf_index, w_sts
     start_time = None
     
     while not stop_background:
@@ -263,8 +261,8 @@ def background_motion_control():
             data, _ = walk_controller.compute_walking_pose(receiver, transfer, REDIS_KEY_READ, REDIS_KEY_WRITE)
             
             # グローバル変数を更新
-            output_buf = walk_controller.output_buf
-            input_buf = walk_controller.input_buf
+            buf_output = walk_controller.buf_output
+            buf_input = walk_controller.buf_input
             buf_index = walk_controller.buf_index
             
             # duration指定があれば自動停止
@@ -318,14 +316,14 @@ def meridian_command(command, object, value):
         コマンドのオブジェクトに対する結果
 
     """
-    global MOT_STS, data, output_buf, input_buf, buf_index
+    global MOT_STS, data, buf_output, buf_input, buf_index
 
     if(command == "walk"):
         walk_controller.start_walk()
         MOT_STS = WALK
         data = walk_controller.data
-        output_buf = walk_controller.output_buf
-        input_buf = walk_controller.input_buf
+        buf_output = walk_controller.buf_output
+        buf_input = walk_controller.buf_input
         buf_index = walk_controller.buf_index
         
         start_background_thread()
@@ -398,42 +396,31 @@ def robot_status():
 
 # Redisデータ取得関数
 
-# meridis データ取得（1行1要素で表示）
-def get_redis_meridis():
+REDIS_KEYS = ['meridis_sim_pub', 'meridis_mcp_pub', 'meridis_calc_pub', 'meridis_mgr_pub', 'meridis_console_pub']
+
+def get_redis_data(key: str):
+    """指定キーのRedisデータを取得して表示"""
     try:
-        # receiverが保持しているredis_keyを使用
-        key = receiver.redis_key if receiver else REDIS_KEY_READ
-        d = receiver.redis_client.hgetall(key)
+        client = receiver.redis_client if receiver else None
+        if client is None:
+            return "error: Redis client not initialized"
+        d = client.hgetall(key)
         if not d:
             return f"(no data for key: {key})"
         arr = [float(d[str(i)]) if str(i) in d else None for i in range(len(d))]
         lines = [f"Key: {key}", "---"] + [f"[{i}] {v}" for i, v in enumerate(arr)]
         return "\n".join(lines)
     except Exception as e:
-        return f"error: {e}\nKey: {receiver.redis_key if receiver else 'N/A'}"
-
-# meridis_mcp_pub データ取得（1行1要素で表示）
-def get_redis_meridis_mcp_pub():
-    try:
-        # transferが保持しているredis_keyを使用
-        key = transfer.redis_key if transfer else REDIS_KEY_WRITE
-        d = transfer.redis_client.hgetall(key)
-        if not d:
-            return f"(no data for key: {key})"
-        arr = [float(d[str(i)]) if str(i) in d else None for i in range(len(d))]
-        lines = [f"Key: {key}", "---"] + [f"[{i}] {v}" for i, v in enumerate(arr)]
-        return "\n".join(lines)
-    except Exception as e:
-        return f"error: {e}\nKey: {transfer.redis_key if transfer else 'N/A'}"
+        return f"error: {e}"
 
 
-# output_buf/input_bufデータ取得関数
+# buf_output/buf_inputデータ取得関数
 
-# output_bufデータ取得（1行1要素で表示）
-def get_output_buf(start: str = "", count: str = "", decimal: str = ""):
+# buf_outputデータ取得（1行1要素で表示）
+def get_buf_output(start: str = "", count: str = "", decimal: str = ""):
     """
-    送信バッファ(output_buf)のデータを範囲指定して取得
-    output_bufはロボットへの指令データ（関節角度指令値、サーボコマンドなど）
+    送信バッファ(buf_output)のデータを範囲指定して取得
+    buf_outputはロボットへの指令データ（関節角度指令値、サーボコマンドなど）
     Args:
         start: 開始位置（空文字列の場合は0から）
         count: 取得する数（空文字列の場合は最後まで）
@@ -471,18 +458,18 @@ def get_output_buf(start: str = "", count: str = "", decimal: str = ""):
     lines = []
     for i in range(start_idx, end_idx):
         # 各要素を指定された桁数でフォーマット
-        formatted_data = [f"{val:.{decimal_places}f}" for val in output_buf[i]]
+        formatted_data = [f"{val:.{decimal_places}f}" for val in buf_output[i]]
         lines.append(f"[{i}] {formatted_data}")
     
     if not lines:
         return "(no data in specified range)"
     return "\n".join(lines)
 
-# input_bufデータ取得（1行1要素で表示）
-def get_input_buf(start: str = "", count: str = "", decimal: str = ""):
+# buf_inputデータ取得（1行1要素で表示）
+def get_buf_input(start: str = "", count: str = "", decimal: str = ""):
     """
-    受信バッファ(input_buf)のデータを範囲指定して取得
-    input_bufはロボットからの応答データ（IMUセンサー値、モーター実測値など）
+    受信バッファ(buf_input)のデータを範囲指定して取得
+    buf_inputはロボットからの応答データ（IMUセンサー値、モーター実測値など）
     Args:
         start: 開始位置（空文字列の場合は0から）
         count: 取得する数（空文字列の場合は最後まで）
@@ -520,7 +507,7 @@ def get_input_buf(start: str = "", count: str = "", decimal: str = ""):
     lines = []
     for i in range(start_idx, end_idx):
         # 各要素を指定された桁数でフォーマット
-        formatted_data = [f"{val:.{decimal_places}f}" for val in input_buf[i]]
+        formatted_data = [f"{val:.{decimal_places}f}" for val in buf_input[i]]
         lines.append(f"[{i}] {formatted_data}")
     
     if not lines:
@@ -530,9 +517,9 @@ def get_input_buf(start: str = "", count: str = "", decimal: str = ""):
 
 # CSV保存・読み込み関数
 
-def filesave_input_buf():
+def filesave_buf_input():
     """
-    input_buf(ロボットからの応答データ)をCSVファイルに保存（固定ファイル名で上書き）
+    buf_input(ロボットからの応答データ)をCSVファイルに保存（固定ファイル名で上書き）
     Returns:
         保存結果のメッセージ
     """
@@ -541,22 +528,22 @@ def filesave_input_buf():
     
     try:
         # 固定ファイル名
-        filename = "input_buf.csv"
+        filename = "buf_input.csv"
         
         with open(filename, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             # 生データのみ書き込み（ヘッダーなし、インデックスなし）
             for i in range(buf_index):
-                writer.writerow(input_buf[i])
+                writer.writerow(buf_input[i])
         
         abs_path = os.path.abspath(filename)
         return f"保存完了: {filename}\nパス: {abs_path}\nデータ数: {buf_index}"
     except Exception as e:
         return f"エラー: {str(e)}"
 
-def filesave_output_buf():
+def filesave_buf_output():
     """
-    output_buf(ロボットへの指令データ)をCSVファイルに保存（固定ファイル名で上書き）
+    buf_output(ロボットへの指令データ)をCSVファイルに保存（固定ファイル名で上書き）
     Returns:
         保存結果のメッセージ
     """
@@ -565,52 +552,52 @@ def filesave_output_buf():
     
     try:
         # 固定ファイル名
-        filename = "output_buf.csv"
+        filename = "buf_output.csv"
         
         with open(filename, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             # 生データのみ書き込み（ヘッダーなし、インデックスなし）
             for i in range(buf_index):
-                writer.writerow(output_buf[i])
+                writer.writerow(buf_output[i])
         
         abs_path = os.path.abspath(filename)
         return f"保存完了: {filename}\nパス: {abs_path}\nデータ数: {buf_index}"
     except Exception as e:
         return f"エラー: {str(e)}"
 
-def filepathget_input_buf():
+def filepathget_buf_input():
     """
-    input_buf(ロボットからの応答データ) CSVファイルのパスを返す（AIエージェント用）
+    buf_input(ロボットからの応答データ) CSVファイルのパスを返す（AIエージェント用）
     AIエージェントはこのパスを使ってファイルを直接読み取ることができます
     Returns:
         絶対パスまたはエラーメッセージ
     """
     try:
-        # 固定ファイル名のinput_buf.csvを使用
-        filename = "input_buf.csv"
+        # 固定ファイル名のbuf_input.csvを使用
+        filename = "buf_input.csv"
         
         if os.path.exists(filename):
             return os.path.abspath(filename)
         else:
-            return "エラー: input_buf.csvが見つかりません。先にCSV保存を実行してください。"
+            return "エラー: buf_input.csvが見つかりません。先にCSV保存を実行してください。"
     except Exception as e:
         return f"エラー: {str(e)}"
 
-def filepathget_output_buf():
+def filepathget_buf_output():
     """
-    output_buf(ロボットへの指令データ) CSVファイルのパスを返す（AIエージェント用）
+    buf_output(ロボットへの指令データ) CSVファイルのパスを返す（AIエージェント用）
     AIエージェントはこのパスを使ってファイルを直接読み取ることができます
     Returns:
         絶対パスまたはエラーメッセージ
     """
     try:
-        # 固定ファイル名のoutput_buf.csvを使用
-        filename = "output_buf.csv"
+        # 固定ファイル名のbuf_output.csvを使用
+        filename = "buf_output.csv"
         
         if os.path.exists(filename):
             return os.path.abspath(filename)
         else:
-            return "エラー: output_buf.csvが見つかりません。先にCSV保存を実行してください。"
+            return "エラー: buf_output.csvが見つかりません。先にCSV保存を実行してください。"
     except Exception as e:
         return f"エラー: {str(e)}"
 
@@ -623,34 +610,26 @@ def parse_arguments():
     return parser.parse_args()
 
 
-# redisタブUI（表示エリア分離）
+# redisタブUI
 with gr.Blocks() as redis_block:
-    gr.Markdown("""### Redisデータログ\nmeridis・meridis_mcp_pubの現在値をそれぞれ取得して表示します。""")
+    gr.Markdown("### Redisデータログ\n対象キーを選択して取得します。")
     with gr.Row():
-        with gr.Column():
-            btn_a = gr.Button(f"{REDIS_KEY_READ}取得")    
-            log_box_a = gr.Textbox(label=REDIS_KEY_READ, lines=20)
-        with gr.Column():
-            btn_b = gr.Button(f"{REDIS_KEY_WRITE}取得")
-            log_box_b = gr.Textbox(label=REDIS_KEY_WRITE, lines=20)
-    btn_a.click(fn=get_redis_meridis, inputs=[], outputs=log_box_a)
-    btn_b.click(fn=get_redis_meridis_mcp_pub, inputs=[], outputs=log_box_b)
+        redis_key_dropdown = gr.Dropdown(choices=REDIS_KEYS, label="Key", value=REDIS_KEYS[0])
+        redis_get_btn = gr.Button("取得")
+    redis_log_box = gr.Textbox(label="Data", lines=20, elem_id="redis_log_box")
+    redis_get_btn.click(fn=get_redis_data, inputs=redis_key_dropdown, outputs=redis_log_box).then(
+        fn=None,
+        js="() => { const el = document.querySelector('#redis_log_box textarea'); if(el) el.scrollTop = 0; }"
+    )
 
 # InputBufタブUI
 with gr.Blocks() as inputbuf_block:
-    gr.Markdown("""### Input Buffer (ロボットからの応答)\ninput_bufはロボットからの応答データ（IMUセンサー値、モーター実測値など）を格納します。""")
+    gr.Markdown("""### Input Buffer (ロボットからの応答)\nbuf_inputはロボットからの応答データ（IMUセンサー値、モーター実測値など）を格納します。""")
     
-    # CSV保存・パス取得セクション
-    with gr.Row():
-        with gr.Column():
-            btn_store_csv_in = gr.Button("input_bufをCSVに保存")
-            csv_store_result_in = gr.Textbox(label="保存結果", lines=3)
-        with gr.Column():
-            btn_path_csv_in = gr.Button("CSVファイルパス取得")
-            csv_path_result_in = gr.Textbox(label="ファイルパス", lines=3)
-    
-    btn_store_csv_in.click(fn=filesave_input_buf, inputs=[], outputs=csv_store_result_in)
-    btn_path_csv_in.click(fn=filepathget_input_buf, inputs=[], outputs=csv_path_result_in)
+    # CSV保存セクション
+    btn_store_csv_in = gr.Button("buf_inputをCSVに保存")
+    csv_store_result_in = gr.Textbox(label="保存結果", lines=3)
+    btn_store_csv_in.click(fn=filesave_buf_input, inputs=[], outputs=csv_store_result_in)
     
     gr.Markdown("---")
     
@@ -659,25 +638,18 @@ with gr.Blocks() as inputbuf_block:
         start_read = gr.Textbox(label="開始位置", placeholder="0")
         count_read = gr.Textbox(label="量", placeholder="最後まで")
         decimal_read = gr.Textbox(label="小数点桁数", placeholder="4")
-    btn_read = gr.Button("input_buf取得")
-    buf_box_read = gr.Textbox(label="input_buf (受信)", lines=20)
-    btn_read.click(fn=get_input_buf, inputs=[start_read, count_read, decimal_read], outputs=buf_box_read)
+    btn_read = gr.Button("buf_input取得")
+    buf_box_read = gr.Textbox(label="buf_input (受信)", lines=20)
+    btn_read.click(fn=get_buf_input, inputs=[start_read, count_read, decimal_read], outputs=buf_box_read)
 
 # OutputBufタブUI
 with gr.Blocks() as outputbuf_block:
-    gr.Markdown("""### Output Buffer (ロボットへの指令)\noutput_bufはロボットへの指令データ（関節角度指令値、サーボコマンドなど）を格納します。""")
+    gr.Markdown("""### Output Buffer (ロボットへの指令)\nbuf_outputはロボットへの指令データ（関節角度指令値、サーボコマンドなど）を格納します。""")
     
-    # CSV保存・パス取得セクション
-    with gr.Row():
-        with gr.Column():
-            btn_store_csv_out = gr.Button("output_bufをCSVに保存")
-            csv_store_result_out = gr.Textbox(label="保存結果", lines=3)
-        with gr.Column():
-            btn_path_csv_out = gr.Button("CSVファイルパス取得")
-            csv_path_result_out = gr.Textbox(label="ファイルパス", lines=3)
-    
-    btn_store_csv_out.click(fn=filesave_output_buf, inputs=[], outputs=csv_store_result_out)
-    btn_path_csv_out.click(fn=filepathget_output_buf, inputs=[], outputs=csv_path_result_out)
+    # CSV保存セクション
+    btn_store_csv_out = gr.Button("buf_outputをCSVに保存")
+    csv_store_result_out = gr.Textbox(label="保存結果", lines=3)
+    btn_store_csv_out.click(fn=filesave_buf_output, inputs=[], outputs=csv_store_result_out)
     
     gr.Markdown("---")
     
@@ -686,96 +658,43 @@ with gr.Blocks() as outputbuf_block:
         start_write = gr.Textbox(label="開始位置", placeholder="0")
         count_write = gr.Textbox(label="量", placeholder="最後まで")
         decimal_write = gr.Textbox(label="小数点桁数", placeholder="4")
-    btn_write = gr.Button("output_buf取得")
-    buf_box_write = gr.Textbox(label="output_buf (送信)", lines=20)
-    btn_write.click(fn=get_output_buf, inputs=[start_write, count_write, decimal_write], outputs=buf_box_write)
+    btn_write = gr.Button("buf_output取得")
+    buf_box_write = gr.Textbox(label="buf_output (送信)", lines=20)
+    btn_write.click(fn=get_buf_output, inputs=[start_write, count_write, decimal_write], outputs=buf_box_write)
 
-# Walkタブ（Blocks形式に統一）
-with gr.Blocks() as walk_demo:
-    gr.Markdown("""### Walk
-歩行時間を入力してGenerateボタンを押すと歩行を開始します。""")
+# Controlタブ（Walk / Stop / Sysreset / Status を統合）
+with gr.Blocks() as control_block:
+    gr.Markdown("### Control")
     with gr.Row():
         duration_input = gr.Textbox(label="Duration", placeholder="歩行時間（秒）")
-        walk_btn = gr.Button("Generate")
-        walk_out = gr.Textbox(label="Result", lines=2)
-    walk_btn.click(fn=robot_walk, inputs=duration_input, outputs=walk_out)
-
-# Stopタブ（Blocks形式に統一）
-with gr.Blocks() as stop_demo:
-    gr.Markdown("""### Stop
-Generateボタンを押すとロボットを停止します。""")
-    with gr.Row():
-        stop_btn = gr.Button("Generate")
-        stop_out = gr.Textbox(label="Result", lines=2)
-    stop_btn.click(fn=robot_stop, inputs=[], outputs=stop_out)
-
-# Resetタブ（フォーム形式、Generateボタンで実行）
-with gr.Blocks() as reset_block:
-    gr.Markdown("""### Reset
-Generateボタンを押すと、リセット信号（data[0]=5556）を1回だけ送信します。""")
-    with gr.Row():
-        reset_btn = gr.Button("Generate")
-        reset_out = gr.Textbox(label="Result", lines=2)    
-    reset_btn.click(fn=system_reset, inputs=[], outputs=reset_out)
-
-# Statusタブ（Blocks形式に統一）
-with gr.Blocks() as status_demo:
-    gr.Markdown("""### Status
-Generateボタンを押すとロボットの状態を確認できます。""")
-    with gr.Row():
-        status_btn = gr.Button("Generate")
-        status_out = gr.Textbox(label="Status", lines=20)
-    status_btn.click(fn=robot_status, inputs=[], outputs=status_out)
+        walk_btn = gr.Button("Walk")
+        stop_btn = gr.Button("Stop")
+        reset_btn = gr.Button("Sysreset")
+        status_btn = gr.Button("Status")
+    result_out = gr.Textbox(label="Result / Status", lines=20)
+    walk_btn.click(fn=robot_walk, inputs=duration_input, outputs=result_out)
+    stop_btn.click(fn=robot_stop, inputs=[], outputs=result_out)
+    reset_btn.click(fn=system_reset, inputs=[], outputs=result_out)
+    status_btn.click(fn=robot_status, inputs=[], outputs=result_out)
 
 
-# システム情報を返す専用の関数を追加
 def get_system_info():
     """システム情報（キーインデックスとパラメータ）を一括取得"""
-    info_parts = []
-    
-    # 1. Meridim90キーインデックス情報
-    info_parts.append("=== Meridim90 キーインデックス一覧 ===")
-    info_parts.append(getmrdkey())
-    info_parts.append("")
-    
-    # 2. 歩行パラメータとリンクパラメータ
-    info_parts.append("=== 現在の歩行パラメータとリンクパラメータ ===")
-    info_parts.append(get_params_text())
-    info_parts.append("")
-    
-    # 3. 使用方法の説明
-    info_parts.append("=== 使用可能なツール ===")
-    info_parts.append("- getmrdkey: Meridim90のキーインデックス一覧を取得")
-    info_parts.append("- get_params_text: 現在のパラメータを取得")
-    info_parts.append("- set_params_text: パラメータを一括設定")
-    info_parts.append("- robot_walk: ロボットを歩行させる（duration指定可能）")
-    info_parts.append("- robot_stop: ロボットを停止")
-    info_parts.append("- robot_status: ロボットの状態を確認")
-    info_parts.append("- system_reset: システムリセット")
-    info_parts.append("- get_input_buf: ロボットからの応答データを取得")
-    info_parts.append("- get_output_buf: ロボットへの指令データを取得")
-    info_parts.append("- filesave_input_buf: input_buf(ロボットからの応答)をCSVファイルに保存")
-    info_parts.append("- filesave_output_buf: output_buf(ロボットへの指令)をCSVファイルに保存")
-    info_parts.append("- filepathget_input_buf: input_buf CSVファイルの絶対パスを取得（このパスでread_fileスキルを使ってファイルを直接読み取り可能）")
-    info_parts.append("- filepathget_output_buf: output_buf CSVファイルの絶対パスを取得（このパスでread_fileスキルを使ってファイルを直接読み取り可能）")
-    info_parts.append("- get_system_info: システム情報を一括取得（このスキル）")
-    info_parts.append("")
-    
-    return "\n".join(info_parts)
+    return _get_system_info(get_params_text())
 
 # システム情報タブの追加
 with gr.Blocks() as sysinfo_block:
     gr.Markdown("""### システム情報
 このタブでは、Meridim90のキーインデックス、歩行パラメータ、リンクパラメータ、使用可能なスキルの一覧を一括で取得できます。
 AIエージェントはこの情報を使ってシステムを理解します。""")
-    sysinfo_box = gr.Textbox(label="System Info", lines=50)
     sysinfo_btn = gr.Button("情報取得")
+    sysinfo_box = gr.Textbox(label="System Info", lines=50)
     sysinfo_btn.click(fn=get_system_info, inputs=[], outputs=sysinfo_box)
 
 # MeridimKeyParamsタブも追加
 demo = gr.TabbedInterface(
-    [walk_demo, stop_demo, reset_block, status_demo, params_block, redis_block, inputbuf_block, outputbuf_block, mrdkey_block, sysinfo_block],
-    ["Walk", "Stop", "Sysreset", "Status", "Params", "Redis", "InputBuf", "OutputBuf", "GetKeyIndex", "SysInfo"]
+    [control_block, params_block, redis_block, inputbuf_block, outputbuf_block, mrdkey_block, sysinfo_block],
+    ["Control", "Params", "Redis", "InputBuf", "OutputBuf", "GetKeyIndex", "SysInfo"]
 )
 
 def main():
