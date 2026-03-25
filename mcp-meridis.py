@@ -338,6 +338,16 @@ def meridian_command(command, object, value):
         transfer.set_data(REDIS_KEY_WRITE, data)
         return f"停止: command: {command}, object: {object}, value: {value}"
 
+    elif(command == "home"):
+        MOT_STS = IDLE
+        stop_background_thread()
+
+        walk_controller.t = 0
+        walk_controller.stop_walk()
+        data = walk_controller.data
+        transfer.set_data(REDIS_KEY_WRITE, data)
+        return "ホーム姿勢へ移行しました。"
+
     elif(command == "reset"):
         MOT_STS = IDLE
         stop_background_thread()
@@ -346,7 +356,7 @@ def meridian_command(command, object, value):
         data = walk_controller.data
         transfer.set_data(REDIS_KEY_WRITE, data)
         return f"リセット: command: {command}, object: {object}, value: {value}"
-    
+
     else:
         return f"未知のコマンド: {command}"
 
@@ -365,6 +375,10 @@ def robot_walk(duration: str = None):
 def robot_stop():
     """ロボット停止"""
     return meridian_command("stop", "", "")
+
+def robot_home():
+    """歩行開始時のホーム姿勢へ移行"""
+    return meridian_command("home", "", "")
 
 
 # Resetタブ用のリセット関数
@@ -666,14 +680,16 @@ with gr.Blocks() as outputbuf_block:
 with gr.Blocks() as control_block:
     gr.Markdown("### Control")
     with gr.Row():
-        duration_input = gr.Textbox(label="Duration", placeholder="歩行時間（秒）")
-        walk_btn = gr.Button("Walk")
-        stop_btn = gr.Button("Stop")
-        reset_btn = gr.Button("Sysreset")
+        home_btn   = gr.Button("Home")
+        walk_btn   = gr.Button("Walk")
+        stop_btn   = gr.Button("Stop")
+        reset_btn  = gr.Button("Sysreset")
         status_btn = gr.Button("Status")
+        duration_input = gr.Textbox(label="Duration", placeholder="歩行時間（秒）", scale=2)
     result_out = gr.Textbox(label="Result / Status", lines=20)
     walk_btn.click(fn=robot_walk, inputs=duration_input, outputs=result_out)
     stop_btn.click(fn=robot_stop, inputs=[], outputs=result_out)
+    home_btn.click(fn=robot_home, inputs=[], outputs=result_out)
     reset_btn.click(fn=system_reset, inputs=[], outputs=result_out)
     status_btn.click(fn=robot_status, inputs=[], outputs=result_out)
 
