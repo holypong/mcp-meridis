@@ -1,7 +1,7 @@
 import gradio as gr
 import numpy as np
 import redis_receiver
-import redis_transferxx
+import redis_transfer
 import threading
 import time
 import math
@@ -910,7 +910,7 @@ def main():
         
         # Redisクライアントを初期化
         receiver = redis_receiver.RedisReceiver(host=REDIS_HOST, port=REDIS_PORT, redis_key=REDIS_KEY_READ)
-        transfer = redis_transferxx.RedisTransfer(host=REDIS_HOST, port=REDIS_PORT, redis_key=REDIS_KEY_WRITE)
+        transfer = redis_transfer.RedisTransfer(host=REDIS_HOST, port=REDIS_PORT, redis_key=REDIS_KEY_WRITE)
         
         # WalkControllerインスタンスを作成
         walk_controller = WalkController(params=params, params_link=params_link, msg_size=MSG_SIZE)
