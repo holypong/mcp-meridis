@@ -206,7 +206,7 @@ AIエージェント（Claude、Cursor等）から利用可能な主要関数：
 ### 例
 
 ```bash
-# デフォルト設定でWeb UI起動
+# デフォルト設定でWeb UI起動4178
 python mcp-meridis.py
 
 # カスタムRedis設定ファイルを指定
