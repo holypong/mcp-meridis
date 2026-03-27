@@ -265,6 +265,26 @@ def background_motion_control():
             buf_input = walk_controller.buf_input
             buf_index = walk_controller.buf_index
             
+            # 安全停止要求チェック (B2修正): 両足接地位相になったら停止
+            if walk_controller.stop_requested:
+                can_stop = False
+                if t < params.init_wait_time + params.cycle_duration * params.weight_shift_duration_ratio:
+                    can_stop = True  # 遊脚前なので即停止可
+                else:
+                    phase_z = 2 * np.pi * ((t - (params.init_wait_time + params.cycle_duration * params.weight_shift_duration_ratio)) / params.cycle_duration)
+                    swing_duration = params.swing_ratio * 2.0 * np.pi
+                    swing_start = np.pi - swing_duration / 2
+                    swing_end = np.pi + swing_duration / 2
+                    normalized_phase_l = ((phase_z % (2 * np.pi)) + 2 * np.pi) % (2 * np.pi)
+                    normalized_phase_r = (((phase_z + params.phase_offset) % (2 * np.pi)) + 2 * np.pi) % (2 * np.pi)
+                    l_grounded = not (swing_start <= normalized_phase_l <= swing_end)
+                    r_grounded = not (swing_start <= normalized_phase_r <= swing_end)
+                    can_stop = l_grounded and r_grounded
+                if can_stop:
+                    walk_controller.stop_requested = False
+                    meridian_command("stop", "", "")
+                    continue
+
             # duration指定があれば自動停止
             if params.duration and t >= params.duration:
                 if t >= params.init_wait_time:
@@ -373,7 +393,10 @@ def robot_walk(duration: str = None):
     return meridian_command("walk", "", duration)
 
 def robot_stop():
-    """ロボット停止"""
+    """ロボット停止（歩行中は両足接地後に安全停止）"""
+    if MOT_STS == WALK:
+        walk_controller.stop_requested = True
+        return "停止処理中... 両足接地後に停止します。"
     return meridian_command("stop", "", "")
 
 def robot_home():

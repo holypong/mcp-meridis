@@ -15,7 +15,6 @@ def param_field(default, description, type_):
 @dataclass
 class WalkParams:
     frame_interval: float = param_field(0.010, "1フレームあたりの時間間隔（固定）[秒] (10ms)", "float")
-    base_height: float = param_field(0.29, "ロボットの初期配置高さ[m]", "float")
     phase_offset: float = param_field(np.pi, "左右の足の位相差[rad]", "float")
     init_wait_time: float = param_field(0.0, "初期待機時間[秒]", "float")
     landing_period_ratio: float = param_field(0.10, "両足着地期間の比率 (周期の%、atm_uvc: TERM_FOOT_LAND)", "float")
@@ -177,6 +176,7 @@ class WalkController:
         self.t = 0
         self.foot_ref_pitch = np.radians(0.0)
         self.trq_on = 1.0
+        self.stop_requested = False  # 安全停止要求フラグ (B2修正)
         
         # データバッファ
         self.data = [0.0] * msg_size
@@ -364,17 +364,17 @@ class WalkController:
             r_joint_angles = self.geometric_leg_ik(r_target_pos, target_pitch=self.foot_ref_pitch,
                                             target_roll=r_target_roll, is_left=False)
 
-            # IKで計算した関節角度をdata配列に書き込み
-            for i in range(6):
-                self.data[30+2*i] = float(self.trq_on)
-                self.data[31+2*i] = float(np.degrees(l_joint_angles[i]))
-                self.data[60+2*i] = float(self.trq_on)
-                self.data[61+2*i] = float(np.degrees(r_joint_angles[i]))
-            
-            # 歩行中のみ前傾姿勢を適用
-            if self.w_sts >= 2 and self.params.forward_lean_angle != 0.0:
-                self.data[35] += self.params.forward_lean_angle
-                self.data[65] += self.params.forward_lean_angle
+        # すべての状態でIK計算結果をdata配列に書き込み (B1修正)
+        for i in range(6):
+            self.data[30+2*i] = float(self.trq_on)
+            self.data[31+2*i] = float(np.degrees(l_joint_angles[i]))
+            self.data[60+2*i] = float(self.trq_on)
+            self.data[61+2*i] = float(np.degrees(r_joint_angles[i]))
+
+        # 歩行中のみ前傾姿勢を適用
+        if self.w_sts >= 2 and self.params.forward_lean_angle != 0.0:
+            self.data[35] += self.params.forward_lean_angle
+            self.data[65] += self.params.forward_lean_angle
 
         # 歩行中は両肩ロール軸を15度回転
         if self.w_sts >= 1:

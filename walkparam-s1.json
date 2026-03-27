@@ -1,6 +1,5 @@
 {
   "frame_interval": 0.01,
-  "base_height": 0.29,
   "phase_offset": 3.141592653589793,
   "init_wait_time": 0.0,
   "landing_period_ratio": 0.1,
