@@ -371,6 +371,17 @@ class WalkController:
             self.data[60+2*i] = float(self.trq_on)
             self.data[61+2*i] = float(np.degrees(r_joint_angles[i]))
 
+        # 計算した足位置をmeridim90配列にセット（redis_plotter.pyでプロット可能）
+        # ミリメートル単位に変換（×1000）してredis_plotter.pyで見やすくする
+        # 左足位置 (l_foot_x, l_foot_y, l_foot_z) [mm]
+        self.data[47] = float(l_target_pos[0] * 1000.0)  # l_foot_x [mm]
+        self.data[48] = float(l_target_pos[1] * 1000.0)  # l_foot_y [mm]
+        self.data[49] = float(l_target_pos[2] * 1000.0)  # l_foot_z [mm]
+        # 右足位置 (r_foot_x, r_foot_y, r_foot_z) [mm]
+        self.data[77] = float(r_target_pos[0] * 1000.0)  # r_foot_x [mm]
+        self.data[78] = float(r_target_pos[1] * 1000.0)  # r_foot_y [mm]
+        self.data[79] = float(r_target_pos[2] * 1000.0)  # r_foot_z [mm]
+
         # 歩行中のみ前傾姿勢を適用
         if self.w_sts >= 2 and self.params.forward_lean_angle != 0.0:
             self.data[35] += self.params.forward_lean_angle
