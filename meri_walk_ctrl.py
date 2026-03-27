@@ -454,12 +454,83 @@ class WalkController:
 
         print(f"Time: {self.t:.2f}, State: {self.w_sts} ,data[37]: {self.data[37]}")
 
-    def reset_pose(self):
-        """姿勢をリセット"""
+    def transition_to_stop_walk(self, transfer=None, redis_key_write=None, steps=100):
+        """足先目標高さzをIKで解きながらイーズイン・アウトでIK立位姿勢へ遷移 (steps × 10ms)
+
+        足先z（直立→屈曲）を補間し毎ステップIKを解くことで、
+        膝・股・足首が幾何学的に整合したまま動く。
+        """
         self.mot_sts = self.IDLE
-        
-        for i in range(15):
+
+        # 特異点（knee_pitch=0）を避けるため直立側は1mm手前から開始
+        start_z = self.params_link.LINK_LEG_LENGTH - 0.001
+        end_z   = self.params_link.LINK_LEG_LENGTH - self.params_link.SHORTEN_LEG_LENGTH
+
+        # CMDをtrq_onに設定（即時）
+        for i in range(6):
+            self.data[30+2*i] = float(self.trq_on)
+            self.data[60+2*i] = float(self.trq_on)
+
+        for step in range(1, steps + 1):
+            alpha = 0.5 * (1.0 - np.cos(np.pi * step / steps))
+            z = start_z + alpha * (end_z - start_z)
+
+            l_angles = self.geometric_leg_ik(np.array([0.0, 0.0, z]), is_left=True)
+            r_angles = self.geometric_leg_ik(np.array([0.0, 0.0, z]), is_left=False)
+            if l_angles is None or r_angles is None:
+                continue
+
+            for i in range(6):
+                self.data[31+2*i] = float(np.degrees(l_angles[i]))
+                self.data[61+2*i] = float(np.degrees(r_angles[i]))
+
+            if transfer is not None and redis_key_write is not None:
+                transfer.set_data(redis_key_write, self.data)
+            time.sleep(0.010)
+
+    def transition_to_reset_pose(self, transfer=None, redis_key_write=None, steps=100):
+        """足先目標高さzをIKで解きながらイーズイン・アウトで全関節ゼロへ遷移 (steps × 10ms)
+
+        IK立位姿勢から直立（脚伸ばし）方向へzを補間し毎ステップIKを解く。
+        最終ステップで全関節をゼロに確定する。
+        """
+        self.mot_sts = self.IDLE
+
+        start_z = self.params_link.LINK_LEG_LENGTH - self.params_link.SHORTEN_LEG_LENGTH
+        end_z   = self.params_link.LINK_LEG_LENGTH - 0.001  # 特異点を避ける
+
+        # CMDをtrq_onに設定（即時）
+        for i in range(6):
+            self.data[30+2*i] = float(self.trq_on)
+            self.data[60+2*i] = float(self.trq_on)
+
+        for step in range(1, steps + 1):
+            alpha = 0.5 * (1.0 - np.cos(np.pi * step / steps))
+            z = start_z + alpha * (end_z - start_z)
+
+            l_angles = self.geometric_leg_ik(np.array([0.0, 0.0, z]), is_left=True)
+            r_angles = self.geometric_leg_ik(np.array([0.0, 0.0, z]), is_left=False)
+            if l_angles is None or r_angles is None:
+                continue
+
+            for i in range(6):
+                self.data[31+2*i] = float(np.degrees(l_angles[i]))
+                self.data[61+2*i] = float(np.degrees(r_angles[i]))
+
+            if transfer is not None and redis_key_write is not None:
+                transfer.set_data(redis_key_write, self.data)
+            time.sleep(0.010)
+
+        # 全関節をゼロに確定
+        for i in range(30):
             self.data[20+2*i] = float(self.trq_on)
             self.data[21+2*i] = 0.0
-            self.data[40+2*i] = float(self.trq_on)
-            self.data[41+2*i] = 0.0
+        if transfer is not None and redis_key_write is not None:
+            transfer.set_data(redis_key_write, self.data)
+
+    def reset_pose(self):
+        """姿勢をリセット（全関節をゼロに）"""
+        self.mot_sts = self.IDLE
+        for i in range(30):
+            self.data[20+2*i] = float(self.trq_on)
+            self.data[21+2*i] = 0.0

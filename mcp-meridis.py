@@ -183,6 +183,8 @@ IDLE = 0
 WALK = 1
 MOT_STS = IDLE
 MOT_INTERVAL = 0.010    # 10ms間隔で記録
+TRANSITION_STEPS_IDLE = 100  # IDLEボタン遷移ステップ数 (× 10ms = 秒数)
+TRANSITION_STEPS_HOME = 100  # HOMEボタン遷移ステップ数 (× 10ms = 秒数)
 w_sts = 0
 
 # 歩行ループ
@@ -358,15 +360,23 @@ def meridian_command(command, object, value):
         transfer.set_data(REDIS_KEY_WRITE, data)
         return f"停止: command: {command}, object: {object}, value: {value}"
 
+    elif(command == "idle"):
+        MOT_STS = IDLE
+        stop_background_thread()
+
+        walk_controller.t = 0
+        walk_controller.transition_to_stop_walk(transfer, REDIS_KEY_WRITE, steps=TRANSITION_STEPS_IDLE)
+        data = walk_controller.data
+        return "IDLE: 歩行直前姿勢へ移行しました。"
+
     elif(command == "home"):
         MOT_STS = IDLE
         stop_background_thread()
 
         walk_controller.t = 0
-        walk_controller.stop_walk()
+        walk_controller.transition_to_reset_pose(transfer, REDIS_KEY_WRITE, steps=TRANSITION_STEPS_HOME)
         data = walk_controller.data
-        transfer.set_data(REDIS_KEY_WRITE, data)
-        return "ホーム姿勢へ移行しました。"
+        return "ホーム姿勢へ移行しました（全関節ゼロ）。"
 
     elif(command == "reset"):
         MOT_STS = IDLE
@@ -400,8 +410,12 @@ def robot_stop():
     return meridian_command("stop", "", "")
 
 def robot_home():
-    """歩行開始時のホーム姿勢へ移行"""
+    """全関節ゼロのホーム姿勢へ移行"""
     return meridian_command("home", "", "")
+
+def robot_idle():
+    """IDLEステータスに移行し、歩行直前姿勢（IK立位）をとる"""
+    return meridian_command("idle", "", "")
 
 
 # Resetタブ用のリセット関数
@@ -704,15 +718,17 @@ with gr.Blocks() as control_block:
     gr.Markdown("### Control")
     with gr.Row():
         home_btn   = gr.Button("Home")
+        idle_btn   = gr.Button("Idle")
         walk_btn   = gr.Button("Walk")
         stop_btn   = gr.Button("Stop")
         reset_btn  = gr.Button("Sysreset")
         status_btn = gr.Button("Status")
         duration_input = gr.Textbox(label="Duration", placeholder="歩行時間（秒）", scale=2)
     result_out = gr.Textbox(label="Result / Status", lines=20)
+    home_btn.click(fn=robot_home, inputs=[], outputs=result_out)
+    idle_btn.click(fn=robot_idle, inputs=[], outputs=result_out)
     walk_btn.click(fn=robot_walk, inputs=duration_input, outputs=result_out)
     stop_btn.click(fn=robot_stop, inputs=[], outputs=result_out)
-    home_btn.click(fn=robot_home, inputs=[], outputs=result_out)
     reset_btn.click(fn=system_reset, inputs=[], outputs=result_out)
     status_btn.click(fn=robot_status, inputs=[], outputs=result_out)
 
