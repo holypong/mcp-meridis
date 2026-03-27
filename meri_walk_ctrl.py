@@ -389,6 +389,9 @@ class WalkController:
             get_data = receiver.get_data(key=redis_key_read)
 
             if get_data is not None:
+                # Redisから読み取ったロボット応答データ（IMU値、ジャイロ値等を含む）を
+                # 送信データにコピー（インデックス0-19）
+                # これにより、ロボットから受信したセンサ値がそのまま次の送信データに反映される
                 for i in range(20):
                     self.data[i] = get_data[i]
                 
@@ -403,6 +406,8 @@ class WalkController:
                     self.apply_gyro_mixing(self.data, gyro_values)
         
         # Redisにデータを送信（オプション）
+        # self.dataには上記でコピーしたロボット応答データ（IMU値等）と
+        # 計算した関節角度指令値が含まれる
         if transfer is not None and redis_key_write is not None:
             transfer.set_data(redis_key_write, self.data)
 
