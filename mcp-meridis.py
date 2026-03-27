@@ -1,3 +1,15 @@
+# ヘルプオプションが指定されている場合は、最小限のインポートで即座に終了
+import sys
+if __name__ == '__main__' and ('-h' in sys.argv or '--help' in sys.argv):
+    import argparse
+    parser = argparse.ArgumentParser(description='MCP Meridis - Gradio Web Interface for Robot Control')
+    parser.add_argument('--redis',
+                        default='redis.json',
+                        help='Redis configuration JSON file (default: redis.json)')
+    parser.print_help()
+    sys.exit(0)
+
+# 通常のインポート
 import gradio as gr
 import numpy as np
 import redis_receiver
@@ -657,7 +669,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description='MCP Meridis - Gradio Web Interface for Robot Control')
     parser.add_argument('--redis',
                         default='redis.json',
-                        help='Redis configuration JSON file (default: redis-mgr.json)')
+                        help='Redis configuration JSON file (default: redis.json)')
     return parser.parse_args()
 
 
