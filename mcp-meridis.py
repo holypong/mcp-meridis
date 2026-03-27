@@ -382,7 +382,7 @@ def meridian_command(command, object, value):
         MOT_STS = IDLE
         stop_background_thread()
 
-        walk_controller.reset_pose()
+        #walk_controller.reset_pose()
         data = walk_controller.data
         transfer.set_data(REDIS_KEY_WRITE, data)
         return f"リセット: command: {command}, object: {object}, value: {value}"
