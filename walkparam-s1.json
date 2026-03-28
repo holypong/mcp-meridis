@@ -15,5 +15,5 @@
   "forward_lean_angle": 0.0,
   "shoulder_roll_angle": 10.0,
   "mix_enable": false,
-  "mix_gyro_g": 0.001
+  "mix_gyro_g": 0.002
 }

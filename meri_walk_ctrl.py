@@ -230,20 +230,20 @@ class WalkController:
         gyro_x = gyro_values[0]
         gyro_y = gyro_values[1]
         
-        mix_gyro_g_deg2rad = self.params.mix_gyro_g * (np.pi / 180.0)
+        mix_gyro_g = self.params.mix_gyro_g  # data[]は度単位のためdeg2rad変換不要
 
         # 左脚のミキシング
         for i in range(15):
             mix_l = 0.0
-            mix_l += gyro_x * float(self.MV_MIX_L[0][i]) * mix_gyro_g_deg2rad
-            mix_l += gyro_y * float(self.MV_MIX_L[1][i]) * mix_gyro_g_deg2rad
+            mix_l += gyro_x * float(self.MV_MIX_L[0][i]) * mix_gyro_g
+            mix_l += gyro_y * float(self.MV_MIX_L[1][i]) * mix_gyro_g
             data[21 + i*2] += mix_l
-        
+
         # 右脚のミキシング
         for i in range(15):
             mix_r = 0.0
-            mix_r += gyro_x * float(self.MV_MIX_R[0][i]) * mix_gyro_g_deg2rad
-            mix_r += gyro_y * float(self.MV_MIX_R[1][i]) * mix_gyro_g_deg2rad
+            mix_r += gyro_x * float(self.MV_MIX_R[0][i]) * mix_gyro_g
+            mix_r += gyro_y * float(self.MV_MIX_R[1][i]) * mix_gyro_g
             data[51 + i*2] += mix_r
 
     def geometric_leg_ik(self, target_pos, target_roll=None, target_pitch=None, is_left=True):
