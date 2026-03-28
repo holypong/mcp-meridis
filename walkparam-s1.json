@@ -8,7 +8,7 @@
   "cycle_duration": 1.2,
   "swing_ratio": 0.4,
   "foot_lift": 0.014,
-  "hip_swing": 0.024,
+  "hip_swing": 0.015,
   "lateral_swing_ratio_1st": 0.8,
   "forward_stride": 0.02,
   "duration": 5.0,

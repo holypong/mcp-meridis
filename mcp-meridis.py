@@ -145,10 +145,6 @@ def set_params_text(text):
         if hasattr(params_link, k):
             setattr(params_link, k, v)
     
-    # パラメータをJSONファイルに保存
-    save_walk_params(params, "walkparam-s1.json")
-    save_link_params(params_link, "linkparam.json")
-    
     return get_params_text()
 # Gradio パラメータ一括取得・一括設定UI
 with gr.Blocks() as params_block:
