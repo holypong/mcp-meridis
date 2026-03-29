@@ -177,6 +177,7 @@ class WalkController:
         self.foot_ref_pitch = np.radians(0.0)
         self.trq_on = 1.0
         self.stop_requested = False  # 安全停止要求フラグ (B2修正)
+        self.use_zero_stride = False  # その場足踏みモード（停止準備）
         
         # データバッファ
         self.data = [0.0] * msg_size
@@ -341,12 +342,25 @@ class WalkController:
                 l_forward = 0
                 r_forward = 0
             else:
+                # サイクル開始位相の検出（位相が0～0.3πの範囲にいるか）
+                normalized_phase_z = ((phase_z % (2 * np.pi)) + 2 * np.pi) % (2 * np.pi)
+                at_cycle_start = (normalized_phase_z < 0.3 * np.pi)
+                
+                # 停止要求がある場合、サイクル開始位相でその場足踏みモードに移行
+                if self.stop_requested and not self.use_zero_stride and at_cycle_start:
+                    self.use_zero_stride = True
+                
                 lateral_swing = self.params.hip_swing * np.sin(phase_y)
                 l_foot_swing = self.calculate_foot_height(phase_z, self.params.foot_lift)
                 r_foot_swing = self.calculate_foot_height(phase_z + self.params.phase_offset, self.params.foot_lift)
 
-                l_forward = self.calculate_forward_motion(phase_z, self.params.forward_stride)
-                r_forward = self.calculate_forward_motion(phase_z + self.params.phase_offset, self.params.forward_stride)
+                # その場足踏みモードではストライド0、通常時は設定値
+                if self.use_zero_stride:
+                    l_forward = 0.0
+                    r_forward = 0.0
+                else:
+                    l_forward = self.calculate_forward_motion(phase_z, self.params.forward_stride)
+                    r_forward = self.calculate_forward_motion(phase_z + self.params.phase_offset, self.params.forward_stride)
 
             l_target_pos = np.array([l_forward, 0.0, (self.params_link.LINK_LEG_LENGTH - self.params_link.SHORTEN_LEG_LENGTH)])
             r_target_pos = np.array([r_forward, 0.0, (self.params_link.LINK_LEG_LENGTH - self.params_link.SHORTEN_LEG_LENGTH)])

@@ -293,23 +293,23 @@ def background_motion_control():
             buf_input = walk_controller.buf_input
             buf_index = walk_controller.buf_index
             
-            # 安全停止要求チェック (B2修正): 両足接地位相になったら停止
+            # 安全停止要求チェック (B2修正): その場足踏み経由でサイクル完了時に停止
             if walk_controller.stop_requested:
                 can_stop = False
                 if t < params.init_wait_time + params.cycle_duration * params.weight_shift_duration_ratio:
                     can_stop = True  # 遊脚前なので即停止可
                 else:
                     phase_z = 2 * np.pi * ((t - (params.init_wait_time + params.cycle_duration * params.weight_shift_duration_ratio)) / params.cycle_duration)
-                    swing_duration = params.swing_ratio * 2.0 * np.pi
-                    swing_start = np.pi - swing_duration / 2
-                    swing_end = np.pi + swing_duration / 2
-                    normalized_phase_l = ((phase_z % (2 * np.pi)) + 2 * np.pi) % (2 * np.pi)
-                    normalized_phase_r = (((phase_z + params.phase_offset) % (2 * np.pi)) + 2 * np.pi) % (2 * np.pi)
-                    l_grounded = not (swing_start <= normalized_phase_l <= swing_end)
-                    r_grounded = not (swing_start <= normalized_phase_r <= swing_end)
-                    can_stop = l_grounded and r_grounded
+                    
+                    # サイクル境界検出（位相が小さい値 = サイクル開始付近）
+                    normalized_phase_z = ((phase_z % (2 * np.pi)) + 2 * np.pi) % (2 * np.pi)
+                    
+                    # その場足踏みモードかつサイクル開始付近（0～0.2πの範囲）なら停止可能
+                    can_stop = walk_controller.use_zero_stride and normalized_phase_z < 0.2 * np.pi
+                
                 if can_stop:
                     walk_controller.stop_requested = False
+                    walk_controller.use_zero_stride = False
                     meridian_command("stop", "", "")
                     continue
 
