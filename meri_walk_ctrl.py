@@ -470,6 +470,20 @@ class WalkController:
 
         print(f"Time: {self.t:.2f}, State: {self.w_sts} ,data[37]: {self.data[37]}")
 
+    def _current_foot_z(self):
+        """現在の足先z（腰基準高さ）を返す。
+        data[49]（最終指令値）を優先し、なければ左膝 knee_pitch から幾何推算する。"""
+        z = self.data[49]
+        if z > 0.001:
+            return z
+        knee_rad = np.radians(self.data[37])  # 左膝角度 [deg→rad]
+        L1 = self.params_link.THIGH_LENGTH
+        L2 = self.params_link.SHANK_LENGTH
+        z_sq = L1**2 + L2**2 + 2*L1*L2*np.cos(knee_rad)
+        if z_sq > 1e-6:
+            return np.sqrt(z_sq)
+        return self.params_link.LINK_LEG_LENGTH - self.params_link.SHORTEN_LEG_LENGTH
+
     def transition_to_stop_walk(self, transfer=None, redis_key_write=None, steps=100):
         """足先目標高さzをIKで解きながらイーズイン・アウトでIK立位姿勢へ遷移 (steps × 10ms)
 
@@ -478,8 +492,8 @@ class WalkController:
         """
         self.mot_sts = self.IDLE
 
-        # 特異点（knee_pitch=0）を避けるため直立側は1mm手前から開始
-        start_z = self.params_link.LINK_LEG_LENGTH - 0.001
+        # 現在の腰高さから開始
+        start_z = self._current_foot_z()
         end_z   = self.params_link.LINK_LEG_LENGTH - self.params_link.SHORTEN_LEG_LENGTH
 
         # CMDをtrq_onに設定（即時）
@@ -512,7 +526,8 @@ class WalkController:
         """
         self.mot_sts = self.IDLE
 
-        start_z = self.params_link.LINK_LEG_LENGTH - self.params_link.SHORTEN_LEG_LENGTH
+        # 現在の腰高さから開始
+        start_z = self._current_foot_z()
         end_z   = self.params_link.LINK_LEG_LENGTH - 0.001  # 特異点を避ける
 
         # CMDをtrq_onに設定（即時）

@@ -146,18 +146,36 @@ def set_params_text(text):
             setattr(params_link, k, v)
     
     return get_params_text()
+# JSONファイルから初期設定を読み込んでテキストで返す
+def get_initial_params_text():
+    initial_walk = load_walk_params("walkparam-s1.json")
+    initial_link = load_link_params("linkparam.json")
+    walk_dict = dataclasses.asdict(initial_walk)
+    link_dict = dataclasses.asdict(initial_link)
+    lines = ["[WalkParams]"]
+    for k, v in walk_dict.items():
+        lines.append(f"{k}={v}")
+    lines.append("")
+    lines.append("[LinkParams]")
+    for k, v in link_dict.items():
+        lines.append(f"{k}={v}")
+    return "\n".join(lines)
+
 # Gradio パラメータ一括取得・一括設定UI
 with gr.Blocks() as params_block:
     gr.Markdown("""### パラメータ一括取得・一括設定
-1. [取得]ボタンで現在値をテキストボックスに表示
-2. 編集後、[設定]ボタンで一括反映
+1. [メモリを取得]ボタンで現在のメモリ上の値をテキストボックスに表示
+2. 編集後、[メモリを設定]ボタンで一括反映
+3. [初期設定を取得]で JSON ファイルの初期値を表示（反映するには[メモリを設定]を押す）
 """)
     with gr.Row():
-        get_btn = gr.Button("取得")
-        set_btn = gr.Button("設定")
+        get_btn = gr.Button("メモリを取得")
+        set_btn = gr.Button("メモリを設定")
+        init_btn = gr.Button("初期設定を取得")
     param_box = gr.Textbox(label="Params", lines=20)
     get_btn.click(fn=get_params_text, inputs=[], outputs=param_box)
     set_btn.click(fn=set_params_text, inputs=param_box, outputs=param_box)
+    init_btn.click(fn=get_initial_params_text, inputs=[], outputs=param_box)
 
 
 """
