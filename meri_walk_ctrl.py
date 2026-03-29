@@ -484,19 +484,16 @@ class WalkController:
             return np.sqrt(z_sq)
         return self.params_link.LINK_LEG_LENGTH - self.params_link.SHORTEN_LEG_LENGTH
 
-    def transition_to_stop_walk(self, transfer=None, redis_key_write=None, steps=100):
-        """足先目標高さzをIKで解きながらイーズイン・アウトでIK立位姿勢へ遷移 (steps × 10ms)
+    def _transition_z(self, end_z, transfer, redis_key_write, steps, zero_joints=False):
+        """足先zをイーズイン・アウトで補間しながらIKを解いてデータを送信する共通処理。
 
-        足先z（直立→屈曲）を補間し毎ステップIKを解くことで、
-        膝・股・足首が幾何学的に整合したまま動く。
+        Args:
+            end_z: 目標とする足先z [m]
+            zero_joints: True のとき遷移後に全関節角度をゼロに確定する（Home用）
         """
         self.mot_sts = self.IDLE
-
-        # 現在の腰高さから開始
         start_z = self._current_foot_z()
-        end_z   = self.params_link.LINK_LEG_LENGTH - self.params_link.SHORTEN_LEG_LENGTH
 
-        # CMDをtrq_onに設定（即時）
         for i in range(6):
             self.data[30+2*i] = float(self.trq_on)
             self.data[60+2*i] = float(self.trq_on)
@@ -517,47 +514,23 @@ class WalkController:
             if transfer is not None and redis_key_write is not None:
                 transfer.set_data(redis_key_write, self.data)
             time.sleep(0.010)
+
+        if zero_joints:
+            for i in range(30):
+                self.data[20+2*i] = float(self.trq_on)
+                self.data[21+2*i] = 0.0
+            if transfer is not None and redis_key_write is not None:
+                transfer.set_data(redis_key_write, self.data)
+
+    def transition_to_stop_walk(self, transfer=None, redis_key_write=None, steps=100):
+        """現在位置からIK立位姿勢へ遷移 (Idle用)"""
+        end_z = self.params_link.LINK_LEG_LENGTH - self.params_link.SHORTEN_LEG_LENGTH
+        self._transition_z(end_z, transfer, redis_key_write, steps)
 
     def transition_to_reset_pose(self, transfer=None, redis_key_write=None, steps=100):
-        """足先目標高さzをIKで解きながらイーズイン・アウトで全関節ゼロへ遷移 (steps × 10ms)
-
-        IK立位姿勢から直立（脚伸ばし）方向へzを補間し毎ステップIKを解く。
-        最終ステップで全関節をゼロに確定する。
-        """
-        self.mot_sts = self.IDLE
-
-        # 現在の腰高さから開始
-        start_z = self._current_foot_z()
-        end_z   = self.params_link.LINK_LEG_LENGTH - 0.001  # 特異点を避ける
-
-        # CMDをtrq_onに設定（即時）
-        for i in range(6):
-            self.data[30+2*i] = float(self.trq_on)
-            self.data[60+2*i] = float(self.trq_on)
-
-        for step in range(1, steps + 1):
-            alpha = 0.5 * (1.0 - np.cos(np.pi * step / steps))
-            z = start_z + alpha * (end_z - start_z)
-
-            l_angles = self.geometric_leg_ik(np.array([0.0, 0.0, z]), is_left=True)
-            r_angles = self.geometric_leg_ik(np.array([0.0, 0.0, z]), is_left=False)
-            if l_angles is None or r_angles is None:
-                continue
-
-            for i in range(6):
-                self.data[31+2*i] = float(np.degrees(l_angles[i]))
-                self.data[61+2*i] = float(np.degrees(r_angles[i]))
-
-            if transfer is not None and redis_key_write is not None:
-                transfer.set_data(redis_key_write, self.data)
-            time.sleep(0.010)
-
-        # 全関節をゼロに確定
-        for i in range(30):
-            self.data[20+2*i] = float(self.trq_on)
-            self.data[21+2*i] = 0.0
-        if transfer is not None and redis_key_write is not None:
-            transfer.set_data(redis_key_write, self.data)
+        """現在位置から全関節ゼロ姿勢へ遷移 (Home用)"""
+        end_z = self.params_link.LINK_LEG_LENGTH - 0.001  # 特異点を避ける
+        self._transition_z(end_z, transfer, redis_key_write, steps, zero_joints=True)
 
     def reset_pose(self):
         """姿勢をリセット（全関節をゼロに）"""
