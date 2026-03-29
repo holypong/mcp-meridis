@@ -12,7 +12,8 @@
       "Bash(curl -s \"http://127.0.0.1:7860/gradio_api/call/get_params_text/af2303a7bf084a24b8082f1a0669bc33\")",
       "mcp__mcp-meridis__robot_status",
       "mcp__mcp-meridis__set_params_text",
-      "mcp__mcp-meridis__robot_walk"
+      "mcp__mcp-meridis__robot_walk",
+      "Bash(curl -s http://127.0.0.1:7860/gradio_api/mcp/sse --max-time 5)"
     ],
     "additionalDirectories": [
       "c:\\development\\Python\\mcp-meridis"
