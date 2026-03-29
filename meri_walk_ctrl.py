@@ -15,9 +15,8 @@ def param_field(default, description, type_):
 @dataclass
 class WalkParams:
     frame_interval: float = param_field(0.010, "1フレームあたりの時間間隔（固定）[秒] (10ms)", "float")
-    base_height: float = param_field(0.29, "ロボットの初期配置高さ[m]", "float")
     phase_offset: float = param_field(np.pi, "左右の足の位相差[rad]", "float")
-    init_wait_time: float = param_field(2.0, "初期待機時間[秒]", "float")
+    init_wait_time: float = param_field(0.0, "初期待機時間[秒]", "float")
     landing_period_ratio: float = param_field(0.10, "両足着地期間の比率 (周期の%、atm_uvc: TERM_FOOT_LAND)", "float")
     weight_shift_duration_ratio: float = param_field(0.25, "重心移動期間の比率 (周期の%)", "float")
     end_of_simulation: float = param_field(8.0, "シミュレーション終了時間[秒]", "float")
@@ -29,6 +28,8 @@ class WalkParams:
     forward_stride: float = param_field(0.02, "前後方向の歩幅[m]", "float")
     duration: float = param_field(8.0, "動作期間[秒]", "float")
     forward_lean_angle: float = param_field(0.0, "歩行中の前傾角度[度]", "float")
+    shoulder_roll_angle: float = param_field(10.0, "歩行中の両肩ロール角度[度]", "float")
+    smooth_stop: bool = param_field(False, "停止時に自動で一歩追加してその場足踏みするか", "bool")
     mix_enable: bool = param_field(False, "ロール角を足首に反映するか", "bool")
     mix_gyro_g: float = param_field(0.001, "ジャイロミキシングゲイン係数", "float")
 
@@ -50,7 +51,7 @@ class LinkParams:
         return self.THIGH_LENGTH + self.SHANK_LENGTH
 
 
-def load_walk_params(json_path="walkparam.json"):
+def load_walk_params(json_path="walkparam-s1.json"):
     """
     JSONファイルからWalkParamsを読み込む
     Args:
@@ -77,7 +78,7 @@ def load_walk_params(json_path="walkparam.json"):
         return WalkParams()
 
 
-def save_walk_params(params, json_path="walkparam.json"):
+def save_walk_params(params, json_path="walkparam-s1.json"):
     """
     WalkParamsをJSONファイルに保存
     Args:
@@ -143,15 +144,15 @@ class WalkController:
     
     # ジャイロセンサーのミキシングマトリックス（左）
     MV_MIX_L = [
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0],   # 0 gyro_roll
-        [0, 0, 0, 0, 0, 0, 0, 0, 0,-8, 0, 0, 0, 0, 0],   # 1 gyro_pitch
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],   # 0 gyro_roll
+        [0, 0, 0, 0, 0, 0, 0, 0, 0,-1, 0, 0, 0, 0, 0],   # 1 gyro_pitch
         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],   # 2 gyro_yaw
     ]
-    
+
     # ジャイロセンサーのミキシングマトリックス（右）
     MV_MIX_R = [
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -8, 0, 0, 0, 0],   # 0 gyro_roll
-        [0, 0, 0, 0, 0, 0, 0, 0, 0,-8, 0, 0, 0, 0, 0],   # 1 gyro_pitch
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0, 0],   # 0 gyro_roll
+        [0, 0, 0, 0, 0, 0, 0, 0, 0,-1, 0, 0, 0, 0, 0],   # 1 gyro_pitch
         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],   # 2 gyro_yaw
     ]
     
@@ -176,11 +177,13 @@ class WalkController:
         self.t = 0
         self.foot_ref_pitch = np.radians(0.0)
         self.trq_on = 1.0
+        self.stop_requested = False  # 安全停止要求フラグ (B2修正)
+        self.use_zero_stride = False  # その場足踏みモード（停止準備）
         
         # データバッファ
         self.data = [0.0] * msg_size
-        self.output_buf = [[0.0] * msg_size for _ in range(10000)]
-        self.input_buf = [[0.0] * msg_size for _ in range(10000)]
+        self.buf_output = [[0.0] * msg_size for _ in range(10000)]
+        self.buf_input = [[0.0] * msg_size for _ in range(10000)]
         self.buf_index = 0
         
         # スレッド制御
@@ -229,20 +232,20 @@ class WalkController:
         gyro_x = gyro_values[0]
         gyro_y = gyro_values[1]
         
-        mix_gyro_g_deg2rad = self.params.mix_gyro_g * (np.pi / 180.0)
+        mix_gyro_g = self.params.mix_gyro_g  # data[]は度単位のためdeg2rad変換不要
 
         # 左脚のミキシング
         for i in range(15):
             mix_l = 0.0
-            mix_l += gyro_x * float(self.MV_MIX_L[0][i]) * mix_gyro_g_deg2rad
-            mix_l += gyro_y * float(self.MV_MIX_L[1][i]) * mix_gyro_g_deg2rad
+            mix_l += gyro_x * float(self.MV_MIX_L[0][i]) * mix_gyro_g
+            mix_l += gyro_y * float(self.MV_MIX_L[1][i]) * mix_gyro_g
             data[21 + i*2] += mix_l
-        
+
         # 右脚のミキシング
         for i in range(15):
             mix_r = 0.0
-            mix_r += gyro_x * float(self.MV_MIX_R[0][i]) * mix_gyro_g_deg2rad
-            mix_r += gyro_y * float(self.MV_MIX_R[1][i]) * mix_gyro_g_deg2rad
+            mix_r += gyro_x * float(self.MV_MIX_R[0][i]) * mix_gyro_g
+            mix_r += gyro_y * float(self.MV_MIX_R[1][i]) * mix_gyro_g
             data[51 + i*2] += mix_r
 
     def geometric_leg_ik(self, target_pos, target_roll=None, target_pitch=None, is_left=True):
@@ -340,12 +343,31 @@ class WalkController:
                 l_forward = 0
                 r_forward = 0
             else:
+                # サイクル開始位相の検出（位相が0～0.3πの範囲にいるか）
+                normalized_phase_z = ((phase_z % (2 * np.pi)) + 2 * np.pi) % (2 * np.pi)
+                at_cycle_start = (normalized_phase_z < 0.3 * np.pi)
+                
+                # 停止要求がある場合、smooth_stop設定に応じて処理
+                if self.params.smooth_stop:
+                    # smooth_stop有効: サイクル開始位相でその場足踏みモードに移行
+                    if self.stop_requested and not self.use_zero_stride and at_cycle_start:
+                        self.use_zero_stride = True
+                else:
+                    # smooth_stop無効: 停止要求があれば即座にその場足踏みモードへ
+                    if self.stop_requested and not self.use_zero_stride:
+                        self.use_zero_stride = True
+                
                 lateral_swing = self.params.hip_swing * np.sin(phase_y)
                 l_foot_swing = self.calculate_foot_height(phase_z, self.params.foot_lift)
                 r_foot_swing = self.calculate_foot_height(phase_z + self.params.phase_offset, self.params.foot_lift)
 
-                l_forward = self.calculate_forward_motion(phase_z, self.params.forward_stride)
-                r_forward = self.calculate_forward_motion(phase_z + self.params.phase_offset, self.params.forward_stride)
+                # その場足踏みモードではストライド0、通常時は設定値
+                if self.use_zero_stride:
+                    l_forward = 0.0
+                    r_forward = 0.0
+                else:
+                    l_forward = self.calculate_forward_motion(phase_z, self.params.forward_stride)
+                    r_forward = self.calculate_forward_motion(phase_z + self.params.phase_offset, self.params.forward_stride)
 
             l_target_pos = np.array([l_forward, 0.0, (self.params_link.LINK_LEG_LENGTH - self.params_link.SHORTEN_LEG_LENGTH)])
             r_target_pos = np.array([r_forward, 0.0, (self.params_link.LINK_LEG_LENGTH - self.params_link.SHORTEN_LEG_LENGTH)])
@@ -363,17 +385,35 @@ class WalkController:
             r_joint_angles = self.geometric_leg_ik(r_target_pos, target_pitch=self.foot_ref_pitch,
                                             target_roll=r_target_roll, is_left=False)
 
-            # IKで計算した関節角度をdata配列に書き込み
-            for i in range(6):
-                self.data[30+2*i] = float(self.trq_on)
-                self.data[31+2*i] = float(np.degrees(l_joint_angles[i]))
-                self.data[60+2*i] = float(self.trq_on)
-                self.data[61+2*i] = float(np.degrees(r_joint_angles[i]))
-            
-            # 歩行中のみ前傾姿勢を適用
-            if self.w_sts >= 2 and self.params.forward_lean_angle != 0.0:
-                self.data[35] += self.params.forward_lean_angle
-                self.data[65] += self.params.forward_lean_angle
+        # すべての状態でIK計算結果をdata配列に書き込み (B1修正)
+        for i in range(6):
+            self.data[30+2*i] = float(self.trq_on)
+            self.data[31+2*i] = float(np.degrees(l_joint_angles[i]))
+            self.data[60+2*i] = float(self.trq_on)
+            self.data[61+2*i] = float(np.degrees(r_joint_angles[i]))
+
+        # 計算した足位置をmeridim90配列にセット（redis_plotter.pyでプロット可能）
+        FOOT_POS_DECIMALS = 6
+        # 左足位置 (l_foot_x, l_foot_y, l_foot_z) [m]
+        self.data[47] = round(float(l_target_pos[0]), FOOT_POS_DECIMALS)  # l_foot_x [m]
+        self.data[48] = round(float(l_target_pos[1]), FOOT_POS_DECIMALS)  # l_foot_y [m]
+        self.data[49] = round(float(l_target_pos[2]), FOOT_POS_DECIMALS)  # l_foot_z [m]
+        # 右足位置 (r_foot_x, r_foot_y, r_foot_z) [m]
+        self.data[77] = round(float(r_target_pos[0]), FOOT_POS_DECIMALS)  # r_foot_x [m]
+        self.data[78] = round(float(r_target_pos[1]), FOOT_POS_DECIMALS)  # r_foot_y [m]
+        self.data[79] = round(float(r_target_pos[2]), FOOT_POS_DECIMALS)  # r_foot_z [m]
+
+        # 歩行中のみ前傾姿勢を適用
+        if self.w_sts >= 2 and self.params.forward_lean_angle != 0.0:
+            self.data[35] += self.params.forward_lean_angle
+            self.data[65] += self.params.forward_lean_angle
+
+        # 歩行中は両肩ロール軸を15度回転
+        if self.w_sts >= 1:
+            self.data[24] = float(self.trq_on)
+            self.data[25] = float(self.params.shoulder_roll_angle)
+            self.data[54] = float(self.trq_on)
+            self.data[55] = float(self.params.shoulder_roll_angle)
 
         # Redisからデータを受信（オプション）
         get_data = None
@@ -381,6 +421,9 @@ class WalkController:
             get_data = receiver.get_data(key=redis_key_read)
 
             if get_data is not None:
+                # Redisから読み取ったロボット応答データ（IMU値、ジャイロ値等を含む）を
+                # 送信データにコピー（インデックス0-19）
+                # これにより、ロボットから受信したセンサ値がそのまま次の送信データに反映される
                 for i in range(20):
                     self.data[i] = get_data[i]
                 
@@ -395,13 +438,15 @@ class WalkController:
                     self.apply_gyro_mixing(self.data, gyro_values)
         
         # Redisにデータを送信（オプション）
+        # self.dataには上記でコピーしたロボット応答データ（IMU値等）と
+        # 計算した関節角度指令値が含まれる
         if transfer is not None and redis_key_write is not None:
             transfer.set_data(redis_key_write, self.data)
 
         # バッファに格納
-        if self.w_sts != 0 and self.buf_index < len(self.output_buf):
-            self.output_buf[self.buf_index] = self.data.copy()
-            self.input_buf[self.buf_index] = get_data.copy() if get_data is not None else [0.0] * self.msg_size
+        if self.w_sts != 0 and self.buf_index < len(self.buf_output):
+            self.buf_output[self.buf_index] = self.data.copy()
+            self.buf_input[self.buf_index] = get_data.copy() if get_data is not None else [0.0] * self.msg_size
             self.buf_index += 1
         
         return self.data, get_data
@@ -423,8 +468,8 @@ class WalkController:
         """歩行を開始"""
         self.mot_sts = self.WALK
         self.data[20] = float(self.trq_on)
-        self.output_buf = [[0.0] * self.msg_size for _ in range(10000)]
-        self.input_buf = [[0.0] * self.msg_size for _ in range(10000)]
+        self.buf_output = [[0.0] * self.msg_size for _ in range(10000)]
+        self.buf_input = [[0.0] * self.msg_size for _ in range(10000)]
         self.buf_index = 0
 
     def stop_walk(self):
@@ -446,12 +491,71 @@ class WalkController:
 
         print(f"Time: {self.t:.2f}, State: {self.w_sts} ,data[37]: {self.data[37]}")
 
-    def reset_pose(self):
-        """姿勢をリセット"""
+    def _current_foot_z(self):
+        """現在の足先z（腰基準高さ）を返す。
+        data[49]（最終指令値）を優先し、なければ左膝 knee_pitch から幾何推算する。"""
+        z = self.data[49]
+        if z > 0.001:
+            return z
+        knee_rad = np.radians(self.data[37])  # 左膝角度 [deg→rad]
+        L1 = self.params_link.THIGH_LENGTH
+        L2 = self.params_link.SHANK_LENGTH
+        z_sq = L1**2 + L2**2 + 2*L1*L2*np.cos(knee_rad)
+        if z_sq > 1e-6:
+            return np.sqrt(z_sq)
+        return self.params_link.LINK_LEG_LENGTH - self.params_link.SHORTEN_LEG_LENGTH
+
+    def _transition_z(self, end_z, transfer, redis_key_write, steps, zero_joints=False):
+        """足先zをイーズイン・アウトで補間しながらIKを解いてデータを送信する共通処理。
+
+        Args:
+            end_z: 目標とする足先z [m]
+            zero_joints: True のとき遷移後に全関節角度をゼロに確定する（Home用）
+        """
         self.mot_sts = self.IDLE
-        
-        for i in range(15):
+        start_z = self._current_foot_z()
+
+        for i in range(6):
+            self.data[30+2*i] = float(self.trq_on)
+            self.data[60+2*i] = float(self.trq_on)
+
+        for step in range(1, steps + 1):
+            alpha = 0.5 * (1.0 - np.cos(np.pi * step / steps))
+            z = start_z + alpha * (end_z - start_z)
+
+            l_angles = self.geometric_leg_ik(np.array([0.0, 0.0, z]), is_left=True)
+            r_angles = self.geometric_leg_ik(np.array([0.0, 0.0, z]), is_left=False)
+            if l_angles is None or r_angles is None:
+                continue
+
+            for i in range(6):
+                self.data[31+2*i] = float(np.degrees(l_angles[i]))
+                self.data[61+2*i] = float(np.degrees(r_angles[i]))
+
+            if transfer is not None and redis_key_write is not None:
+                transfer.set_data(redis_key_write, self.data)
+            time.sleep(0.010)
+
+        if zero_joints:
+            for i in range(30):
+                self.data[20+2*i] = float(self.trq_on)
+                self.data[21+2*i] = 0.0
+            if transfer is not None and redis_key_write is not None:
+                transfer.set_data(redis_key_write, self.data)
+
+    def transition_to_stop_walk(self, transfer=None, redis_key_write=None, steps=100):
+        """現在位置からIK立位姿勢へ遷移 (Idle用)"""
+        end_z = self.params_link.LINK_LEG_LENGTH - self.params_link.SHORTEN_LEG_LENGTH
+        self._transition_z(end_z, transfer, redis_key_write, steps)
+
+    def transition_to_reset_pose(self, transfer=None, redis_key_write=None, steps=100):
+        """現在位置から全関節ゼロ姿勢へ遷移 (Home用)"""
+        end_z = self.params_link.LINK_LEG_LENGTH - 0.001  # 特異点を避ける
+        self._transition_z(end_z, transfer, redis_key_write, steps, zero_joints=True)
+
+    def reset_pose(self):
+        """姿勢をリセット（全関節をゼロに）"""
+        self.mot_sts = self.IDLE
+        for i in range(30):
             self.data[20+2*i] = float(self.trq_on)
             self.data[21+2*i] = 0.0
-            self.data[40+2*i] = float(self.trq_on)
-            self.data[41+2*i] = 0.0

@@ -40,22 +40,30 @@ python mcp-meridis.py
 
 ### 3. Web UIの使い方
 
-- **Walk/Stop/Reset/Statusタブ**  
-  歩行開始・停止・リセット・状態確認が可能
+- **Controlタブ**  
+  Home/Idle/Walk/Stop/Sysreset/Statusボタンで制御・状態確認が可能  
+  - **Home**: 全関節をゼロ位置（ホーム姿勢）に移行  
+  - **Idle**: 歩行直前の立位姿勢に移行  
+  - **Walk**: 歩行開始（Duration欄で歩行時間を秒単位で指定可能）  
+  - **Stop**: 歩行停止（その場足踏み経由で安全停止、`smooth_stop`設定で動作変更可能）  
+  - **Sysreset**: システムリセット信号送信  
+  - **Status**: ロボット状態表示（状態/時間/歩行段階/IMU情報/転倒判定）
 
 - **Paramsタブ**  
   [取得]ボタンで現在のパラメータをテキストで取得  
   編集後、[設定]ボタンで一括反映
 
-### 4. パラメータメタデータの取得
+- **Redisタブ**  
+  Redisキーを選択してリアルタイムデータを表示
 
-Pythonコードから  
-```python
-from mcp-meridis import get_params_metadata
-meta = get_params_metadata()
-print(meta)
-```
-で各パラメータの説明・型情報を取得できます。
+- **InputBuf / OutputBufタブ**  
+  ロボットとの送受信データバッファを表示・CSV保存
+
+- **GetKeyIndexタブ**  
+  Meridim90配列のキーインデックス一覧を表示
+
+- **SysInfoタブ**  
+  システム全体の情報を一括取得（AIエージェント向け）
 
 ---
 
@@ -88,7 +96,10 @@ flowchart LR
 - `mcp-meridis.py` ... メインサーバー・UI・制御ロジック
 - `redis_receiver.py` ... Redisからのデータ受信
 - `redis_transfer.py` ... Redisへのデータ送信
-- `walk_ctrl.py` ... 歩行制御ロジック
+- `meri_walk_ctrl.py` ... 歩行制御ロジック（WalkController、歩行パラメータ管理）
+- `meridim_info.py` ... Meridim90配列キー定義とシステム情報
+- `SPEC_MCP.md` ... 歩行制御の理論的背景と要求仕様書
+- `CLAUDE.md` ... Claude Code向けのファイル出力ルール
 - `README.md` ... このファイル
 
 ---
@@ -107,7 +118,7 @@ python mcp-meridis.py [--redis REDIS_CONFIG_FILE]
 
 ### 引数
 
-- `--redis`（デフォルト: `redis-mgr.json`）: Redis設定JSONファイルのパス
+- `--redis`（デフォルト: `redis.json`）: Redis設定JSONファイルのパス
 
 ### 設定ファイル（redis-sim.json）
 
@@ -151,21 +162,54 @@ Redis接続設定を JSON ファイルで管理します。ファイルが存在
 
 ### Web UI の構成
 
-#### 制御タブ
-- **Walk**: 歩行時間を指定して歩行を開始
-- **Stop**: ロボットを即座に停止
-- **Sysreset**: システムリセット（data[0]=5556 を1回送信）
-- **Status**: ロボットの状態（歩行/停止、経過時間、歩行段階）を表示
+#### Controlタブ
+- **Home**: 全関節をゼロ位置（ホーム姿勢）に段階的に移行（100ステップ、1秒）
+- **Idle**: 歩行直前の立位姿勢（IK計算済み）に段階的に移行（100ステップ、1秒）
+- **Walk**: 歩行時間（秒）を指定して歩行を開始（Durationフィールドで指定可能）
+- **Stop**: 歩行を停止（その場足踏み経由で安全停止）
+  - `smooth_stop=False`（デフォルト）: 即座にその場足踏みに移行して停止
+  - `smooth_stop=True`: サイクル開始位相で一歩追加してから停止（自然な動作）
+- **Sysreset**: システムリセット信号を送信（data[0]=5556 を1回送信）
+- **Status**: ロボットの状態を表示
+  - 状態（停止中/歩行中）、経過時間、歩行段階
+  - IMU情報: 加速度(x,y,z)、ジャイロ(x,y,z)、姿勢(roll,pitch,yaw)
+  - 転倒判定: roll/pitch ±30度で転倒と判定
 
-#### 設定・データ管理タブ  
-- **Params**: 歩行パラメータとリンクパラメータの一括取得・編集・設定
-- **Redis**: Redis上の `meridis_mgr_pub`（受信）・`meridis_mcp_pub`（送信）データの現在値表示
-- **InputBuf**: ロボットからの応答データバッファの表示・CSV保存
-- **OutputBuf**: ロボットへの指令データバッファの表示・CSV保存
+#### Paramsタブ  
+- 歩行パラメータ（WalkParams）とリンクパラメータ（LinkParams）の一括取得・編集・設定
+- [取得]ボタンで現在値をテキスト形式で表示
+- テキスト編集後、[設定]ボタンで一括反映
 
-#### 参考情報タブ
-- **GetKeyIndex**: Meridim90配列のキーインデックス一覧表示
-- **SysInfo**: システム全体の設定情報・利用可能な機能一覧
+**主要な歩行パラメータ:**
+- `cycle_duration`: 1周期の時間[秒]（デフォルト: 1.2）
+- `forward_stride`: 前後方向の歩幅[m]（デフォルト: 0.02）
+- `foot_lift`: 遊脚の持ち上げ量[m]（デフォルト: 0.014）
+- `hip_swing`: 横方向のスイング量[m]（デフォルト: 0.015）
+- `swing_ratio`: 遊脚期間の比率 0.0-1.0（デフォルト: 0.4）
+- **`smooth_stop`**: 停止時の動作モード（デフォルト: False）
+  - `False`: 即座にその場足踏みに移行して停止（応答性重視）
+  - `True`: サイクル開始位相で一歩追加してから停止（自然さ重視）
+
+#### Redisタブ
+- Redis上の複数キー（meridis_sim_pub、meridis_mcp_pub、meridis_mgr_pub等）から選択してリアルタイムデータを表示
+
+#### InputBufタブ
+- ロボットからの応答データバッファ（buf_input）を表示
+- 開始位置、取得数、小数点桁数を指定して表示可能
+- CSV保存機能付き（buf_input.csv）
+
+#### OutputBufタブ
+- ロボットへの指令データバッファ（buf_output）を表示
+- 開始位置、取得数、小数点桁数を指定して表示可能
+- CSV保存機能付き（buf_output.csv）
+
+#### GetKeyIndexタブ
+- Meridim90配列のキーインデックス一覧を表示
+- 各キーの説明とインデックス番号を確認可能
+
+#### SysInfoタブ
+- システム全体の情報を一括取得（キーインデックス、パラメータ、利用可能機能）
+- AIエージェントがシステムを理解するための情報を提供
 
 ### MCP サーバー機能
 
@@ -175,15 +219,18 @@ AIエージェント（Claude、Cursor等）から利用可能な主要関数：
 - `get_params_text()`: 現在のパラメータテキスト取得
 - `set_params_text(text)`: パラメータ一括設定
 - `robot_walk(duration)`: ロボット歩行開始
-- `robot_stop()`: ロボット停止
+- `robot_stop()`: ロボット停止（その場足踏み経由で安全停止、`smooth_stop`設定により動作変更可能）
+- `robot_home()`: ホーム姿勢（全関節ゼロ）へ移行
+- `robot_idle()`: IDLE姿勢（歩行直前立位）へ移行
 - `robot_status()`: ロボット状態確認
 - `system_reset()`: システムリセット
-- `get_input_buf(start, count, decimal)`: 受信データバッファ取得
-- `get_output_buf(start, count, decimal)`: 送信データバッファ取得
-- `filesave_input_buf()`: 受信データをCSV保存
-- `filesave_output_buf()`: 送信データをCSV保存
-- `filepathget_input_buf()`: 受信データCSVファイルパス取得
-- `filepathget_output_buf()`: 送信データCSVファイルパス取得
+- `get_buf_input(start, count, decimal)`: 受信データバッファ取得
+- `get_buf_output(start, count, decimal)`: 送信データバッファ取得
+- `filesave_buf_input()`: 受信データをCSV保存
+- `filesave_buf_output()`: 送信データをCSV保存
+- `filepathget_buf_input()`: 受信データCSVファイルパス取得
+- `filepathget_buf_output()`: 送信データCSVファイルパス取得
+- `get_redis_data(key)`: 指定RedisキーのデータをJSON形式で取得
 - `get_system_info()`: システム情報一括取得
 
 ### データフロー
@@ -206,11 +253,14 @@ AIエージェント（Claude、Cursor等）から利用可能な主要関数：
 ### 例
 
 ```bash
-# デフォルト設定でWeb UI起動4178
+# デフォルト設定（redis.json）でMCPサーバー起動
 python mcp-meridis.py
 
 # カスタムRedis設定ファイルを指定
-python mcp-meridis.py --redis my-redis-config.json
+python mcp-meridis.py --redis redis-mgr.json
+
+# シミュレーション用Redis設定を指定
+python mcp-meridis.py --redis redis-sim.json
 
 # ヘルプ表示
 python mcp-meridis.py --help

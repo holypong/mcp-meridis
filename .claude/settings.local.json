@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cp c:/development/Python/mcp-meridis/buf_input.csv c:/development/Python/mcp-meridis/buf_input_fl0017.csv)",
+      "Bash(cp c:/development/Python/mcp-meridis/buf_output.csv c:/development/Python/mcp-meridis/buf_output_fl0017.csv)",
+      "Bash(cp c:/development/Python/mcp-meridis/buf_input.csv c:/development/Python/mcp-meridis/buf_input_fl0020.csv)",
+      "Bash(cp c:/development/Python/mcp-meridis/buf_output.csv c:/development/Python/mcp-meridis/buf_output_fl0020.csv)",
+      "mcp__mcp-meridis__get_params_text",
+      "mcp__mcp-meridis__robot_stop",
+      "Bash(ls c:/development/Python/mcp-meridis/*.csv)",
+      "Bash(curl -s -X POST \"http://127.0.0.1:7860/gradio_api/call/get_params_text\" -H \"Content-Type: application/json\" -d '{\"\"data\"\": []}')",
+      "Bash(curl -s \"http://127.0.0.1:7860/gradio_api/call/get_params_text/af2303a7bf084a24b8082f1a0669bc33\")",
+      "mcp__mcp-meridis__robot_status",
+      "mcp__mcp-meridis__set_params_text",
+      "mcp__mcp-meridis__robot_walk",
+      "Bash(curl -s http://127.0.0.1:7860/gradio_api/mcp/sse --max-time 5)"
+    ],
+    "additionalDirectories": [
+      "c:\\development\\Python\\mcp-meridis"
+    ]
+  }
+}
