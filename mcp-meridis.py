@@ -456,16 +456,54 @@ def system_reset():
     return "リセット信号（data[0]=5556）を1回送信しました。"
 
 def robot_status():
-    """ロボット状態確認"""
-    global MOT_STS, t, w_sts
+    """ロボット状態確認（IMU情報含む）"""
+    global MOT_STS, t, w_sts, buf_input, buf_index
     status_map = {IDLE: "停止中", WALK: "歩行中"}
     current_status = status_map.get(MOT_STS, "不明")
+    
+    # MeridimKeyParamsインスタンス作成
+    mrd = MeridimKeyParams()
+    
     # 列挙形式で複数行出力
     lines = [
         f"1. 状態: {current_status}",
         f"2. 時間: {t:.2f}秒",
         f"3. 歩行段階: {w_sts}"
     ]
+    
+    # IMU情報の取得（buf_inputから最新データ）
+    if buf_index > 0:
+        latest_data = buf_input[buf_index - 1]
+        
+        # 加速度センサ (m/s^2) - 3次元ベクトル表記
+        acc_x = latest_data[mrd.MRD_ACC_X]
+        acc_y = latest_data[mrd.MRD_ACC_Y]
+        acc_z = latest_data[mrd.MRD_ACC_Z]
+        lines.append(f"4. 加速度: ({acc_x:.3f}, {acc_y:.3f}, {acc_z:.3f}) m/s²")
+        
+        # ジャイロセンサ (rad/s) - 3次元ベクトル表記
+        gyro_x = latest_data[mrd.MRD_GYRO_X]
+        gyro_y = latest_data[mrd.MRD_GYRO_Y]
+        gyro_z = latest_data[mrd.MRD_GYRO_Z]
+        lines.append(f"5. ジャイロ: ({gyro_x:.4f}, {gyro_y:.4f}, {gyro_z:.4f}) rad/s")
+        
+        # 姿勢角 (DMP推定値、度) - 3次元ベクトル表記
+        roll = latest_data[mrd.MRD_DIR_ROLL]
+        pitch = latest_data[mrd.MRD_DIR_PITCH]
+        yaw = latest_data[mrd.MRD_DIR_YAW]
+        lines.append(f"6. 姿勢角: ({roll:.2f}, {pitch:.2f}, {yaw:.2f}) 度")
+        
+        # 転倒判定（ロール・ピッチの閾値チェック）
+        roll_threshold = 30.0  # 度
+        pitch_threshold = 30.0  # 度
+        if abs(roll) > roll_threshold or abs(pitch) > pitch_threshold:
+            fall_status = "⚠️ 転倒のおそれ"
+        else:
+            fall_status = "✓ 正常"
+        lines.append(f"7. 転倒判定: {fall_status}")
+    else:
+        lines.append("4. IMUデータ: データなし")
+    
     # 20行に満たない場合は空行で埋める
     while len(lines) < 20:
         lines.append("")
