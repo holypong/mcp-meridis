@@ -301,11 +301,14 @@ def background_motion_control():
                 else:
                     phase_z = 2 * np.pi * ((t - (params.init_wait_time + params.cycle_duration * params.weight_shift_duration_ratio)) / params.cycle_duration)
                     
-                    # サイクル境界検出（位相が小さい値 = サイクル開始付近）
-                    normalized_phase_z = ((phase_z % (2 * np.pi)) + 2 * np.pi) % (2 * np.pi)
-                    
-                    # その場足踏みモードかつサイクル開始付近（0～0.2πの範囲）なら停止可能
-                    can_stop = walk_controller.use_zero_stride and normalized_phase_z < 0.2 * np.pi
+                    # smooth_stop設定に応じた停止条件
+                    if params.smooth_stop:
+                        # smooth_stop有効: サイクル開始付近（0～0.2π）でのみ停止
+                        normalized_phase_z = ((phase_z % (2 * np.pi)) + 2 * np.pi) % (2 * np.pi)
+                        can_stop = walk_controller.use_zero_stride and normalized_phase_z < 0.2 * np.pi
+                    else:
+                        # smooth_stop無効: その場足踏みモードならすぐ停止
+                        can_stop = walk_controller.use_zero_stride
                 
                 if can_stop:
                     walk_controller.stop_requested = False
@@ -429,10 +432,17 @@ def robot_walk(duration: str = None):
     return meridian_command("walk", "", duration)
 
 def robot_stop():
-    """ロボット停止（歩行中は両足接地後に安全停止）"""
+    """ロボット停止（歩行中は設定に応じて安全停止）
+    
+    smooth_stop=True: サイクル開始付近で一歩追加してその場足踏み後に停止
+    smooth_stop=False: 即座にその場足踏みに移行して停止（デフォルト）
+    """
     if MOT_STS == WALK:
         walk_controller.stop_requested = True
-        return "停止処理中... 両足接地後に停止します。"
+        if params.smooth_stop:
+            return "停止処理中... サイクル完了後に停止します。"
+        else:
+            return "停止処理中... その場足踏み後に停止します。"
     return meridian_command("stop", "", "")
 
 def robot_home():

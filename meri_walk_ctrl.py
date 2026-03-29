@@ -29,6 +29,7 @@ class WalkParams:
     duration: float = param_field(8.0, "動作期間[秒]", "float")
     forward_lean_angle: float = param_field(0.0, "歩行中の前傾角度[度]", "float")
     shoulder_roll_angle: float = param_field(10.0, "歩行中の両肩ロール角度[度]", "float")
+    smooth_stop: bool = param_field(False, "停止時に自動で一歩追加してその場足踏みするか", "bool")
     mix_enable: bool = param_field(False, "ロール角を足首に反映するか", "bool")
     mix_gyro_g: float = param_field(0.001, "ジャイロミキシングゲイン係数", "float")
 
@@ -346,9 +347,15 @@ class WalkController:
                 normalized_phase_z = ((phase_z % (2 * np.pi)) + 2 * np.pi) % (2 * np.pi)
                 at_cycle_start = (normalized_phase_z < 0.3 * np.pi)
                 
-                # 停止要求がある場合、サイクル開始位相でその場足踏みモードに移行
-                if self.stop_requested and not self.use_zero_stride and at_cycle_start:
-                    self.use_zero_stride = True
+                # 停止要求がある場合、smooth_stop設定に応じて処理
+                if self.params.smooth_stop:
+                    # smooth_stop有効: サイクル開始位相でその場足踏みモードに移行
+                    if self.stop_requested and not self.use_zero_stride and at_cycle_start:
+                        self.use_zero_stride = True
+                else:
+                    # smooth_stop無効: 停止要求があれば即座にその場足踏みモードへ
+                    if self.stop_requested and not self.use_zero_stride:
+                        self.use_zero_stride = True
                 
                 lateral_swing = self.params.hip_swing * np.sin(phase_y)
                 l_foot_swing = self.calculate_foot_height(phase_z, self.params.foot_lift)
