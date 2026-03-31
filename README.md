@@ -76,15 +76,24 @@ None
 
 起動時は `redis.json` を使用します。別ファイルを使う場合は `--redis` で指定します。
 
+
+### 例
+
 ```bash
-# シミュレーション用
+# デフォルト設定（redis.json）でMCPサーバー起動
+python mcp-meridis.py
+
+# シミュレーション用Redis設定を指定
 python mcp-meridis.py --redis redis-sim.json
 
-# 実機/管理側用
+# カスタムRedis設定ファイルを指定
 python mcp-meridis.py --redis redis-mgr.json
+
+# ヘルプ表示
+python mcp-meridis.py --help
 ```
 
-#### redis.json / redis-sim.json
+#### シミュレーションとの接続：redis.json / redis-sim.json
 
 ```mermaid
 flowchart LR
@@ -117,7 +126,7 @@ flowchart LR
 }
 ```
 
-#### redis-mgr.json
+#### ロボット実機との接続：redis-mgr.json
 
 ```mermaid
 flowchart LR
@@ -135,7 +144,6 @@ flowchart LR
   WriteKey -- 読み出し --> Manager
   Manager -- 制御 --> Robot
 ```
-
 
 - 読み取りキー: `meridis_mgr_pub`（実機/管理側の最新状態データ）
 - 書き込みキー: `meridis_mcp_pub`（サーバーから送るコマンド/目標値）
@@ -238,30 +246,5 @@ AIエージェント（Claude、Cursor等）から利用可能な主要関数：
 - `get_system_info()`: システム情報一括取得
 
 
-### 注記
-
-- バックグラウンド歩行制御は 10ms 間隔で実行され、高精度な時刻同期処理を行います。
-- データバッファは最大 10,000 要素まで格納され、CSV エクスポート機能により解析用データとして出力できます。
-- Paramsタブの変更はメモリ上に即時反映されます（JSON保存は別処理で実施）。
-- MCP サーバーモードでは、AIエージェントが全ての制御・監視機能にプログラマティックにアクセス可能です。
-- Redis接続エラー、データ変換エラーは適切にハンドリングされ、エラーメッセージとして出力されます。
-
-### 例
-
-```bash
-# デフォルト設定（redis.json）でMCPサーバー起動
-python mcp-meridis.py
-
-# シミュレーション用Redis設定を指定
-python mcp-meridis.py --redis redis-sim.json
-
-# カスタムRedis設定ファイルを指定
-python mcp-meridis.py --redis redis-mgr.json
-
-# ヘルプ表示
-python mcp-meridis.py --help
-```
-
-実装の詳細や利用可能なクラス・メソッドについては [mcp-meridis.py](mcp-meridis.py) を参照してください（`WalkController`、`MeridimKeyParams`、各種 Gradio UI 関数など）。
 
 ---
