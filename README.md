@@ -309,18 +309,11 @@ claude mcp add --transport sse mcp-meridis http://127.0.0.1:7860/gradio_api/mcp/
 claude mcp list
 ```
 
-サーバーを削除する場合:
-
-```bash
-claude mcp remove mcp-meridis
-```
-
 **設定手順がわからなければ、Claude Code 自身に以下のように依頼するとやってくれます。**
 
 > ```
 > mcp-meridis の MCP サーバーを http://127.0.0.1:7860/gradio_api/mcp/sse で SSE 接続として登録してください
 > mcp-meridis が MCP サーバーとして登録されているか確認してください
-> mcp-meridis の MCP 登録を削除してください
 > ```
 
 ---
