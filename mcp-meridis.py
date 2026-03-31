@@ -229,8 +229,8 @@ buf_index = 0  # インクリメンタルカウンタ
 
 # WalkParamsとLinkParamsはwalk_ctrlからインポート
 # JSONファイルから読み込み（なければデフォルト値を使用）
-params = load_walk_params("walkparam-s1.json")
-print(f"Loaded WalkParams: cycle_duration={params.cycle_duration}")
+params = load_walk_params("walkparam.json")
+#print(f"Loaded WalkParams: cycle_duration={params.cycle_duration}")
 
 # Redis設定とクライアント初期化は main() 関数で行う
 
@@ -239,7 +239,7 @@ print(f"Loaded WalkParams: cycle_duration={params.cycle_duration}")
 # LinkParamsはwalk_ctrlからインポート
 # JSONファイルから読み込み（なければデフォルト値を使用）
 params_link = load_link_params("linkparam.json")
-print(f"Loaded LinkParams: THIGH_LENGTH={params_link.THIGH_LENGTH}, SHANK_LENGTH={params_link.SHANK_LENGTH}")
+#print(f"Loaded LinkParams: THIGH_LENGTH={params_link.THIGH_LENGTH}, SHANK_LENGTH={params_link.SHANK_LENGTH}")
 
 
 # パラメータメタデータ取得関数
