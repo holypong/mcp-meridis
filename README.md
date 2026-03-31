@@ -5,6 +5,21 @@
 mcp-meridisは、ロボットの歩行制御・パラメータ管理・状態監視を行うためのPython製MCP（Model Context Protocol）サーバーです。  
 GradioによるWeb UIと、Redisを用いたロボット状態の送受信に対応しています。
 
+
+本プログラム（mcp-meridis）は Meridian プロジェクトのエコシステム上で動作します。
+
+> **Meridian プロジェクトのエコシステム**
+>
+> | コンポーネント | 開発者 | 役割 |
+> |---|---|---|
+> | [Meridian](https://meridian-oss.github.io/#project) | Ninagawa123 | ロボット通信ミドルプロトコル。ESP32 ボードと Meridim90 データ配列で 100 Hz の双方向通信を実現 |
+> | [meridis](https://github.com/holypong/meridis) | holypong | Redis ベースのデータブリッジする仕組みで、シミュレータ/実機ロボット/MCPサーバ と接続 |
+> | [merimujoco](https://github.com/holypong/merimujoco) | holypong | MuJoCo 物理シミュレーション。meridis 経由で Sim2Real / Real2Sim を提供 |
+> | [mcp-meridis](https://github.com/holypong/mcp-meridis) | holypong | AI エージェントと連動するMCPサーバー。歩行動作におけるパラメータ調整/開始・停止の制御/歩行データ収集をプロンプトで指示 |
+
+
+
+
 ## 主な機能
 
 - **ロボット歩行制御**  
@@ -75,6 +90,13 @@ None
 ### 3. Redis設定ファイル
 
 起動時は `redis.json` を使用します。別ファイルを使う場合は `--redis` で指定します。
+
+先に `merimujoco` のクイックスタートを確認し、接続モードを決めてください。
+
+| 利用モード | 先に確認する Quick Start | 使用する Redis 設定ファイル |
+|---|---|---|
+| シミュレーション | Step 1（必要に応じて Step 2 まで） | `redis.json` または `redis-sim.json` |
+| ロボット実機 | Step 3 以降 | `redis-mgr.json` |
 
 
 ### 例
