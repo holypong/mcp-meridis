@@ -13,7 +13,7 @@ GradioによるWeb UIと、Redisを用いたロボット状態の送受信に対
 > | コンポーネント | 開発者 | 役割 |
 > |---|---|---|
 > | [Meridian](https://meridian-oss.github.io/#project) | Ninagawa123 | ロボット通信ミドルプロトコル。ESP32 ボードと Meridim90 データ配列で 100 Hz の双方向通信を実現 |
-> | [meridis](https://github.com/holypong/meridis) | holypong | Redis ベースのデータブリッジする仕組みで、シミュレータ/実機ロボット/MCPサーバ と接続 |
+> | [meridis](https://github.com/holypong/meridis) | holypong | Redis を介してシミュレータ・実機ロボット・MCPサーバを接続するデータブリッジ |
 > | [merimujoco](https://github.com/holypong/merimujoco) | holypong | MuJoCo 物理シミュレーション。meridis 経由で Sim2Real / Real2Sim を提供 |
 > | [mcp-meridis](https://github.com/holypong/mcp-meridis) | holypong | AI エージェントと連動するMCPサーバー。歩行動作におけるパラメータ調整/開始・停止の制御/歩行データ収集をプロンプトで指示 |
 
@@ -38,6 +38,11 @@ GradioによるWeb UIと、Redisを用いたロボット状態の送受信に対
   ロボット状態の送受信をRedis経由で実施
 
 ## 利用方法
+
+### 前提条件
+
+- **Redis サーバーが起動していること**（デフォルト: `127.0.0.1:6379`）
+  - 未インストールの場合は [redis.io](https://redis.io/docs/getting-started/) を参照してください
 
 ### 1. 必要なパッケージのインストール
 
@@ -185,7 +190,6 @@ flowchart LR
 
 ### 4. Web UIの使い方
 
-![control](image/mcp-meridi-control.png)
 
 - **Controlタブ**  
   Home/Idle/Walk/Stop/Sysreset/Statusボタンで制御・状態確認が可能  
@@ -195,6 +199,8 @@ flowchart LR
   - **Stop**: 歩行停止（その場足踏み経由で安全停止、`smooth_stop`設定で動作変更可能）  
   - **Sysreset**: システムリセット信号送信  
   - **Status**: ロボット状態表示（状態/時間/歩行段階/IMU情報/転倒判定）
+
+![params](image/mcp-meridis-control.png)
 
 - **Paramsタブ**  
 
@@ -230,8 +236,6 @@ flowchart LR
 - `redis_transfer.py` ... Redisへのデータ送信
 - `mrd_walk_ctrl.py` ... 歩行制御ロジック（WalkController、歩行パラメータ管理）
 - `mrd_info.py` ... Meridim90配列キー定義とシステム情報
-- `SPEC_MCP.md` ... 歩行制御の理論的背景と要求仕様書
-- `CLAUDE.md` ... Claude Code向けのファイル出力ルール
 - `README.md` ... このファイル
 
 ---
