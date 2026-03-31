@@ -23,8 +23,8 @@ import json
 import argparse
 import dataclasses
 import re
-from meri_walk_ctrl import WalkController, WalkParams, LinkParams, load_walk_params, load_link_params, save_walk_params, save_link_params
-from meridim_info import MeridimKeyParams, get_key_index_text, get_system_info as _get_system_info
+from mrd_walk_ctrl import WalkController, WalkParams, LinkParams, load_walk_params, load_link_params, save_walk_params, save_link_params
+from mrd_info import MeridimKeyParams, get_key_index_text, get_system_info as _get_system_info
 
 # 20260103 安定版
 
