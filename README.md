@@ -2,11 +2,10 @@
 
 ## 概要
 
+本プログラム（mcp-meridis）は Meridian プロジェクトのエコシステム上で動作します。
+
 mcp-meridisは、ロボットの歩行制御・パラメータ管理・状態監視を行うためのPython製MCP（Model Context Protocol）サーバーです。  
 GradioによるWeb UIと、Redisを用いたロボット状態の送受信に対応しています。
-
-
-本プログラム（mcp-meridis）は Meridian プロジェクトのエコシステム上で動作します。
 
 > **Meridian プロジェクトのエコシステム**
 >
@@ -18,12 +17,10 @@ GradioによるWeb UIと、Redisを用いたロボット状態の送受信に対
 > | [mcp-meridis](https://github.com/holypong/mcp-meridis) | holypong | AI エージェントと連動するMCPサーバー。歩行動作におけるパラメータ調整/開始・停止の制御/歩行データ収集をプロンプトで指示 |
 
 
-
-
 ## 主な機能
 
 - **ロボット歩行制御**  
-  Web UIやAPIから歩行開始・停止・リセットなどのコマンドを送信可能
+  Web UIやAPIからロボットの歩行開始・停止・リセットなどのコマンドを送信可能
 
 - **パラメータ一括管理**  
   歩行パラメータ・リンク長パラメータを一括取得・編集できるUIとAPIを提供
@@ -41,10 +38,14 @@ GradioによるWeb UIと、Redisを用いたロボット状態の送受信に対
 
 ### 前提条件
 
-- **Redis サーバーが起動していること**（デフォルト: `127.0.0.1:6379`）
-  - 未インストールの場合は [redis.io](https://redis.io/docs/getting-started/) を参照してください
+1. [Meridian](https://meridian-oss.github.io/#project) の概要を確認していること。
+1. [meridis](https://github.com/holypong/meridis)のセットアップが完了していること。
+1. [merimujoco](https://github.com/holypong/merimujoco)のセットアップが完了していること。
+  （Quick Start 1-2 まで確認済みであること）
 
-### 1. 必要なパッケージのインストール
+### 必要なパッケージのインストール
+
+[前提条件](#前提条件)を満たした上で、次の追加インストールを実行してください
 
 #### Gradio MCP対応版をインストール
 
@@ -52,13 +53,7 @@ GradioによるWeb UIと、Redisを用いたロボット状態の送受信に対
 pip install "gradio[mcp]>=5.29.0"
 ```
 
-#### その他の依存パッケージをインストール
-
-```bash
-pip install numpy redis
-```
-
-### 2. サーバーの起動
+### サーバーの起動
 
 ```bash
 python mcp-meridis.py
@@ -92,35 +87,50 @@ None
 6. MCP（SSE）エンドポイントURL `http://127.0.0.1:7860/gradio_api/mcp/sse` を表示します。
 
 
-### 3. Redis設定ファイル
+### サーバーの終了
 
-起動時は `redis.json` を使用します。別ファイルを使う場合は `--redis` で指定します。
+ターミナル上で、CTRL+C で終了してください
 
-先に `merimujoco` のクイックスタートを確認し、接続モードを決めてください。
-
-| 利用モード | 先に確認する Quick Start | 使用する Redis 設定ファイル |
-|---|---|---|
-| シミュレーション | Step 1（必要に応じて Step 2 まで） | `redis.json` または `redis-sim.json` |
-| ロボット実機 | Step 3 以降 | `redis-mgr.json` |
-
-
-### 例
-
+### ヘルプ表示
 ```bash
-# デフォルト設定（redis.json）でMCPサーバー起動
-python mcp-meridis.py
-
-# シミュレーション用Redis設定を指定
-python mcp-meridis.py --redis redis-sim.json
-
-# カスタムRedis設定ファイルを指定
-python mcp-meridis.py --redis redis-mgr.json
-
-# ヘルプ表示
 python mcp-meridis.py --help
 ```
 
+### Redis設定ファイルの説明
+
+- Redisサーバーの使用方法を指定する場合、`--redis` を使用します。
+- 指定しない場合、デフォルトで `redis.json` （`redis-sim.json`と同じ内容）が使用されます。
+
 #### シミュレーションとの接続：redis.json / redis-sim.json
+
+- mcp-meridis のインストールディレクトリで以下を実行する
+```bash
+# シミュレーション用Redis設定を指定
+python mcp-meridis.py --redis redis-sim.json
+```
+
+- merimujoco のインストールディレクトリで以下を実行する
+```bash
+# シミュレーションを起動する
+python merimujoco.py --redis redis-mcp.json
+```
+
+**設定ファイルの内容**
+```json
+{
+  "redis": {
+    "host": "127.0.0.1",
+    "port": 6379
+  },
+  "redis_keys": {
+    "read": "meridis_sim_pub",
+    "write": "meridis_mcp_pub"
+  }
+}
+```
+
+- 読み取りキー: `meridis_sim_pub`（シミュレーション側の状態データ）
+- 書き込みキー: `meridis_mcp_pub`（サーバーから送るコマンド/目標値）
 
 ```mermaid
 flowchart LR
@@ -137,9 +147,21 @@ flowchart LR
 ```
 
 
-- 読み取りキー: `meridis_sim_pub`（シミュレーション側の状態データ）
-- 書き込みキー: `meridis_mcp_pub`（サーバーから送るコマンド/目標値）
+#### ロボット実機との接続：redis-mgr.json
 
+- mcp-meridis のインストールディレクトリで以下を実行する
+```bash
+# ロボット実機を動かすためのRedis設定ファイルを指定
+python mcp-meridis.py --redis redis-mgr.json
+```
+
+- meridisのインストールディレクトリで以下を実行する
+```bash
+# ロボット実機を動かすための設定ファイルを指定（足位置情報があれば変換する)
+python meridis_manager.py --mgr mgr_mcp2real.json --foot true
+```
+
+**設定ファイルの内容**
 ```json
 {
   "redis": {
@@ -147,13 +169,13 @@ flowchart LR
     "port": 6379
   },
   "redis_keys": {
-    "read": "meridis_sim_pub",
+    "read": "meridis_mgr_pub",
     "write": "meridis_mcp_pub"
   }
 }
 ```
-
-#### ロボット実機との接続：redis-mgr.json
+- 読み取りキー: `meridis_mgr_pub`（実機/管理側の最新状態データ）
+- 書き込みキー: `meridis_mcp_pub`（サーバーから送るコマンド/目標値）
 
 ```mermaid
 flowchart LR
@@ -172,23 +194,8 @@ flowchart LR
   Manager -- 制御 --> Robot
 ```
 
-- 読み取りキー: `meridis_mgr_pub`（実機/管理側の最新状態データ）
-- 書き込みキー: `meridis_mcp_pub`（サーバーから送るコマンド/目標値）
 
-```json
-{
-  "redis": {
-    "host": "127.0.0.1",
-    "port": 6379
-  },
-  "redis_keys": {
-    "read": "meridis_mgr_pub",
-    "write": "meridis_mcp_pub"
-  }
-}
-```
-
-### 4. Web UIの使い方
+### Web UIの使い方
 
 
 - **Controlタブ**  
@@ -243,8 +250,6 @@ flowchart LR
 ## MCPサーバーの利用方法
 
 ### Claude Desktop / Claude Code との接続
-
-#### 前提
 
 `mcp-meridis.py` を先に起動し、以下の SSE エンドポイントが有効な状態にしてください。
 
