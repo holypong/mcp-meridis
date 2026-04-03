@@ -846,7 +846,7 @@ def main():
         start_background_thread()
 
         print(f"[Info] Starting Gradio web interface...")
-        print(f"[Info] Redis config loaded from: {args.redis}")
+        #print(f"[Info] Redis config loaded from: {args.redis}")
         
         # Gradioアプリを起動
         #demo.launch(server_name="0.0.0.0", server_port=7860)

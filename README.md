@@ -69,8 +69,6 @@ LinkParams loaded from linkparam.json
 [Config] Redis Keys: Read='meridis_sim_pub', Write='meridis_mcp_pub'
 Redis list 'meridis_mcp_pub' already exists.
 [Info] Starting Gradio web interface...
-[Info] Redis config loaded from: redis.json
-None
 * Running on local URL:  http://127.0.0.1:7860
 * To create a public link, set `share=True` in `launch()`.
 
@@ -80,11 +78,12 @@ None
 起動時の処理内容は以下の通りです。
 
 1. 歩行パラメータ`walkparam.json`とリンクパラメータ`linkparam.json`を読み込みます。
-2. Redis設定ファイル`redis.json`（デフォルト）を読み込みます。
-3. Redis接続先（host/port）とキー設定を読み込み、Redis接続を初期化します。
-4. Redisクライアントと`WalkController`を初期化し、バックグラウンド制御スレッドを開始します。
-5. ローカルUIのURL `http://127.0.0.1:7860` を表示します。
-6. MCP（SSE）エンドポイントURL `http://127.0.0.1:7860/gradio_api/mcp/sse` を表示します。
+1. Redis設定ファイル`redis.json`（デフォルト）を読み込みます。
+1. Redis接続先（host/port）を指定します。
+1. Redisキーの設定（Read/Write）を確認します
+1. Write先のキーの存在を確認します
+1. ローカルUIのURL `http://127.0.0.1:7860` を表示します。
+1. MCP（SSE）エンドポイントURL `http://127.0.0.1:7860/gradio_api/mcp/sse` を表示します。
 
 
 ### MCPサーバーの終了
@@ -197,6 +196,8 @@ flowchart LR
 ---
 
 ### Web UIの使い方
+
+- MCPサーバー起動時中に、http://localhost:7860 をブラウザで開いてください
 
 
 - **Controlタブ**  
@@ -393,3 +394,5 @@ Claude Desktop または Claude Code で mcp-meridis に接続した状態で、
 | 歩かせながらステータスを確認して、歩行が終わったらバッファをCSVに保存してください | 歩行開始 → 状態確認 → CSV保存 を順番に実行 |
 
 ---
+## さらに詳しく学びたい人向け
+[SPEC_MCP.md](SPEC_MCP.md)を読み進めてください。
