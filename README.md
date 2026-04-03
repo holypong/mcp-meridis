@@ -53,7 +53,7 @@ GradioによるWeb UIと、Redisを用いたロボット状態の送受信に対
 pip install "gradio[mcp]>=5.29.0"
 ```
 
-### サーバーの起動
+### MCPサーバーの起動
 
 ```bash
 python mcp-meridis.py
@@ -87,19 +87,19 @@ None
 6. MCP（SSE）エンドポイントURL `http://127.0.0.1:7860/gradio_api/mcp/sse` を表示します。
 
 
-### サーバーの終了
+### MCPサーバーの終了
 
 ターミナル上で、CTRL+C で終了してください
 
-### ヘルプ表示
+
+### コマンド
 ```bash
-python mcp-meridis.py --help
+python mcp-meridis.py --redis REDIS_FILE
 ```
 
-### Redis設定ファイルの説明
+### オプション
+`--redis`（デフォルト: `redis.json`）: `redis-sim.json`と同じ内容が使用されます。
 
-- Redisサーバーの使用方法を指定する場合、`--redis` を使用します。
-- 指定しない場合、デフォルトで `redis.json` （`redis-sim.json`と同じ内容）が使用されます。
 
 #### シミュレーションとの接続：redis.json / redis-sim.json
 
@@ -194,6 +194,7 @@ flowchart LR
   Manager -- 制御 --> Robot
 ```
 
+---
 
 ### Web UIの使い方
 
