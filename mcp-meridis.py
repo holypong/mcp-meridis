@@ -23,8 +23,8 @@ import json
 import argparse
 import dataclasses
 import re
-from meri_walk_ctrl import WalkController, WalkParams, LinkParams, load_walk_params, load_link_params, save_walk_params, save_link_params
-from meridim_info import MeridimKeyParams, get_key_index_text, get_system_info as _get_system_info
+from mrd_walk_ctrl import WalkController, WalkParams, LinkParams, load_walk_params, load_link_params, save_walk_params, save_link_params
+from mrd_info import MeridimKeyParams, get_key_index_text, get_system_info as _get_system_info
 
 # 20260103 安定版
 
@@ -229,8 +229,8 @@ buf_index = 0  # インクリメンタルカウンタ
 
 # WalkParamsとLinkParamsはwalk_ctrlからインポート
 # JSONファイルから読み込み（なければデフォルト値を使用）
-params = load_walk_params("walkparam-s1.json")
-print(f"Loaded WalkParams: cycle_duration={params.cycle_duration}")
+params = load_walk_params("walkparam.json")
+#print(f"Loaded WalkParams: cycle_duration={params.cycle_duration}")
 
 # Redis設定とクライアント初期化は main() 関数で行う
 
@@ -239,7 +239,7 @@ print(f"Loaded WalkParams: cycle_duration={params.cycle_duration}")
 # LinkParamsはwalk_ctrlからインポート
 # JSONファイルから読み込み（なければデフォルト値を使用）
 params_link = load_link_params("linkparam.json")
-print(f"Loaded LinkParams: THIGH_LENGTH={params_link.THIGH_LENGTH}, SHANK_LENGTH={params_link.SHANK_LENGTH}")
+#print(f"Loaded LinkParams: THIGH_LENGTH={params_link.THIGH_LENGTH}, SHANK_LENGTH={params_link.SHANK_LENGTH}")
 
 
 # パラメータメタデータ取得関数
@@ -846,7 +846,7 @@ def main():
         start_background_thread()
 
         print(f"[Info] Starting Gradio web interface...")
-        print(f"[Info] Redis config loaded from: {args.redis}")
+        #print(f"[Info] Redis config loaded from: {args.redis}")
         
         # Gradioアプリを起動
         #demo.launch(server_name="0.0.0.0", server_port=7860)

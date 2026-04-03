@@ -2,13 +2,25 @@
 
 ## 概要
 
+本プログラム（mcp-meridis）は Meridian プロジェクトのエコシステム上で動作します。
+
 mcp-meridisは、ロボットの歩行制御・パラメータ管理・状態監視を行うためのPython製MCP（Model Context Protocol）サーバーです。  
 GradioによるWeb UIと、Redisを用いたロボット状態の送受信に対応しています。
+
+> **Meridian プロジェクトのエコシステム**
+>
+> | コンポーネント | 開発者 | 役割 |
+> |---|---|---|
+> | [Meridian](https://meridian-oss.github.io/#project) | Ninagawa123 | ロボット通信ミドルプロトコル。ESP32 ボードと Meridim90 データ配列で 100 Hz の双方向通信を実現 |
+> | [meridis](https://github.com/holypong/meridis) | holypong | Redis を介してシミュレータ・実機ロボット・MCPサーバを接続するデータブリッジ |
+> | [merimujoco](https://github.com/holypong/merimujoco) | holypong | MuJoCo 物理シミュレーション。meridis 経由で Sim2Real / Real2Sim を提供 |
+> | [mcp-meridis](https://github.com/holypong/mcp-meridis) | holypong | AI エージェントと連動するMCPサーバー。歩行動作におけるパラメータ調整/開始・停止の制御/歩行データ収集をプロンプトで指示 |
+
 
 ## 主な機能
 
 - **ロボット歩行制御**  
-  Web UIやAPIから歩行開始・停止・リセットなどのコマンドを送信可能
+  Web UIやAPIからロボットの歩行開始・停止・リセットなどのコマンドを送信可能
 
 - **パラメータ一括管理**  
   歩行パラメータ・リンク長パラメータを一括取得・編集できるUIとAPIを提供
@@ -24,21 +36,169 @@ GradioによるWeb UIと、Redisを用いたロボット状態の送受信に対
 
 ## 利用方法
 
-### 1. 必要なパッケージのインストール
+### 前提条件
+
+1. [Meridian](https://meridian-oss.github.io/#project) の概要を確認していること。
+1. [meridis](https://github.com/holypong/meridis)のセットアップが完了していること。
+1. [merimujoco](https://github.com/holypong/merimujoco)のセットアップが完了していること。
+  （Quick Start 1-2 まで確認済みであること）
+
+### 必要なパッケージのインストール
+
+[前提条件](#前提条件)を満たした上で、次の追加インストールを実行してください
+
+#### Gradio MCP対応版をインストール
 
 ```bash
-pip install gradio numpy redis
+pip install "gradio[mcp]>=5.29.0"
 ```
 
-### 2. サーバーの起動
+### MCPサーバーの起動
 
 ```bash
 python mcp-meridis.py
 ```
 
-- デフォルトで http://localhost:7860 でGradio UIが起動します
+- http://localhost:7860 をブラウザで開いてください
 
-### 3. Web UIの使い方
+```bash
+WalkParams loaded from walkparam.json
+LinkParams loaded from linkparam.json
+[Config] Loaded Redis configuration from 'redis.json'
+[Config] Redis: 127.0.0.1:6379
+[Config] Redis Keys: Read='meridis_sim_pub', Write='meridis_mcp_pub'
+Redis list 'meridis_mcp_pub' already exists.
+[Info] Starting Gradio web interface...
+* Running on local URL:  http://127.0.0.1:7860
+* To create a public link, set `share=True` in `launch()`.
+
+🔨 MCP server (using SSE) running at: http://127.0.0.1:7860/gradio_api/mcp/sse
+```
+
+起動時の処理内容は以下の通りです。
+
+1. 歩行パラメータ`walkparam.json`とリンクパラメータ`linkparam.json`を読み込みます。
+1. Redis設定ファイル`redis.json`（デフォルト）を読み込みます。
+1. Redis接続先（host/port）を指定します。
+1. Redisキーの設定（Read/Write）を確認します
+1. Write先のキーの存在を確認します
+1. ローカルUIのURL `http://127.0.0.1:7860` を表示します。
+1. MCP（SSE）エンドポイントURL `http://127.0.0.1:7860/gradio_api/mcp/sse` を表示します。
+
+
+### MCPサーバーの終了
+
+ターミナル上で、CTRL+C で終了してください
+
+
+### コマンド
+```bash
+python mcp-meridis.py --redis REDIS_FILE
+```
+
+### オプション
+`--redis`（デフォルト: `redis.json`）: `redis-sim.json`と同じ内容が使用されます。
+
+
+#### シミュレーションとの接続：redis.json / redis-sim.json
+
+- mcp-meridis のインストールディレクトリで以下を実行する
+```bash
+# シミュレーション用Redis設定を指定
+python mcp-meridis.py --redis redis-sim.json
+```
+
+- merimujoco のインストールディレクトリで以下を実行する
+```bash
+# シミュレーションを起動する
+python merimujoco.py --redis redis-mcp.json
+```
+
+**設定ファイルの内容**
+```json
+{
+  "redis": {
+    "host": "127.0.0.1",
+    "port": 6379
+  },
+  "redis_keys": {
+    "read": "meridis_sim_pub",
+    "write": "meridis_mcp_pub"
+  }
+}
+```
+
+- 読み取りキー: `meridis_sim_pub`（シミュレーション側の状態データ）
+- 書き込みキー: `meridis_mcp_pub`（サーバーから送るコマンド/目標値）
+
+```mermaid
+flowchart LR
+  Robot[Robot Simulation/merimujoco.py]
+  Server[mcp-meridis.py]
+  subgraph Redis
+    ReadKey[meridis_sim_pub<br/>状態データ]
+    WriteKey[meridis_mcp_pub<br/>コマンド/目標値]
+  end
+  Robot -- 書き込み --> ReadKey
+  ReadKey -- 読み出し --> Server
+  Server -- 書き込み --> WriteKey
+  WriteKey -- 読み出し --> Robot
+```
+
+
+#### ロボット実機との接続：redis-mgr.json
+
+- mcp-meridis のインストールディレクトリで以下を実行する
+```bash
+# ロボット実機を動かすためのRedis設定ファイルを指定
+python mcp-meridis.py --redis redis-mgr.json
+```
+
+- meridisのインストールディレクトリで以下を実行する
+```bash
+# ロボット実機を動かすための設定ファイルを指定（足位置情報があれば変換する)
+python meridis_manager.py --mgr mgr_mcp2real.json --foot true
+```
+
+**設定ファイルの内容**
+```json
+{
+  "redis": {
+    "host": "127.0.0.1",
+    "port": 6379
+  },
+  "redis_keys": {
+    "read": "meridis_mgr_pub",
+    "write": "meridis_mcp_pub"
+  }
+}
+```
+- 読み取りキー: `meridis_mgr_pub`（実機/管理側の最新状態データ）
+- 書き込みキー: `meridis_mcp_pub`（サーバーから送るコマンド/目標値）
+
+```mermaid
+flowchart LR
+  Robot[Robot Real]
+  Manager[meridis_manager.py]
+  Server[mcp-meridis.py]
+  subgraph Redis
+    ReadKey[meridis_mgr_pub<br/>状態データ]
+    WriteKey[meridis_mcp_pub<br/>コマンド/目標値]
+  end
+  Robot -- 通信 --> Manager
+  Manager -- 書き込み --> ReadKey
+  ReadKey -- 読み出し --> Server
+  Server -- 書き込み --> WriteKey
+  WriteKey -- 読み出し --> Manager
+  Manager -- 制御 --> Robot
+```
+
+---
+
+### Web UIの使い方
+
+- MCPサーバー起動時中に、http://localhost:7860 をブラウザで開いてください
+
 
 - **Controlタブ**  
   Home/Idle/Walk/Stop/Sysreset/Statusボタンで制御・状態確認が可能  
@@ -49,15 +209,26 @@ python mcp-meridis.py
   - **Sysreset**: システムリセット信号送信  
   - **Status**: ロボット状態表示（状態/時間/歩行段階/IMU情報/転倒判定）
 
+![params](image/mcp-meridis-control.png)
+
 - **Paramsタブ**  
-  [取得]ボタンで現在のパラメータをテキストで取得  
-  編集後、[設定]ボタンで一括反映
+
+  [メモリを取得]で現在値を読み出し、編集後に[メモリを設定]で一括反映  
+  [初期設定を取得]でJSON初期値を表示（反映には[メモリを設定]が必要）
+
+![params](image/mcp-meridis-params.png)
+
 
 - **Redisタブ**  
   Redisキーを選択してリアルタイムデータを表示
 
-- **InputBuf / OutputBufタブ**  
-  ロボットとの送受信データバッファを表示・CSV保存
+![redis](image/mcp-meridis-redis.png)
+
+- **InputBufタブ**  
+  ロボットとの受信データバッファを表示・CSV保存
+
+- **OutputBufタブ**  
+  ロボットとの送信データバッファを表示・CSV保存
 
 - **GetKeyIndexタブ**  
   Meridim90配列のキーインデックス一覧を表示
@@ -67,149 +238,96 @@ python mcp-meridis.py
 
 ---
 
-
-## Redisキー `meridis_mgr_pub` と `meridis_mcp_pub` の関係
-
-- `meridis_mgr_pub` … ロボット（マイコンボード等）が送信した最新の状態データを格納するキー（読み取り専用）
-- `meridis_mcp_pub` … サーバー（このプログラム）が生成し、ロボットに送信するコマンドや目標値データを格納するキー（書き込み専用）
-
-この2つのキーを通じて、ロボットとサーバー間で状態・コマンドのやり取りを行います。
-
-### 関係図（Mermaid）
-
-```mermaid
-flowchart LR
-  Robot[Robot Simulation/Real ]
-  Server[mcp_meridis.py]
-  subgraph Redisサーバー
-    Meridis["meridis_mgr_pub（状態データ）"]
-    Meridis2["meridis_mcp_pub（コマンド/目標値）"]
-  end
-  Robot -- 書き込み/送信 --> Meridis
-  Meridis -- 読み出し/取得 --> Server
-  Server -- 書き込み/送信 --> Meridis2
-  Meridis2 -- 読み出し/取得 --> Robot
-```
-
 ## ファイル構成
 
 - `mcp-meridis.py` ... メインサーバー・UI・制御ロジック
 - `redis_receiver.py` ... Redisからのデータ受信
 - `redis_transfer.py` ... Redisへのデータ送信
-- `meri_walk_ctrl.py` ... 歩行制御ロジック（WalkController、歩行パラメータ管理）
-- `meridim_info.py` ... Meridim90配列キー定義とシステム情報
-- `SPEC_MCP.md` ... 歩行制御の理論的背景と要求仕様書
-- `CLAUDE.md` ... Claude Code向けのファイル出力ルール
+- `mrd_walk_ctrl.py` ... 歩行制御ロジック（WalkController、歩行パラメータ管理）
+- `mrd_info.py` ... Meridim90配列キー定義とシステム情報
 - `README.md` ... このファイル
 
 ---
 
-## mcp-meridis.py
+## MCPサーバーの利用方法
 
-- `mcp-meridis.py` は Gradio ベースの Web インターフェースを持つロボット制御・監視・パラメータ管理システムです。
-- MCP（Model Context Protocol）サーバーとしても動作し、AIエージェントからの制御にも対応します。
-- Redis を介してロボットとの状態データ・コマンドデータの送受信を行います。
+### Claude Desktop / Claude Code との接続
 
-### 使い方
+`mcp-meridis.py` を先に起動し、以下の SSE エンドポイントが有効な状態にしてください。
+
+```
+http://127.0.0.1:7860/gradio_api/mcp/sse
+```
+
+---
+
+#### Claude Desktop での接続
+
+**メニューから設定ファイルを開く手順：**
+
+1. Claude Desktop を起動する
+2. メニューバーの **「ファイル」→「設定」**（macOS は **「Claude」→「Settings...」**）を開く
+3. 左メニューの **「開発者」** を選択する
+4. **「設定を編集」** ボタンをクリックする（`claude_desktop_config.json` がエディタで開く）
+5. 下記の JSON を追加して保存する
+6. Claude Desktop を**再起動**する
+
+```json
+{
+  "mcpServers": {
+    "mcp-meridis": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "http://127.0.0.1:7860/gradio_api/mcp/sse"
+      ]
+    }
+  }
+}
+```
+
+> `mcp-remote` を使うには Node.js が必要です。未インストールの場合は [nodejs.org](https://nodejs.org/) からインストールしてください。
+
+> 既に `mcpServers` キーが存在する場合は、`"mcp-meridis": { ... }` のブロックだけを既存の `mcpServers` 内に追記してください。
+
+接続が成功すると、チャット画面のツールアイコンに `mcp-meridis` のツール群が表示されます。
+
+![claudedesktop](image/claudedesktop-mcp.png)
+
+---
+
+#### Claude Code（CLI）での接続
+
+![claudecode](image/claudecode-mcp.png)
+
+Claude Code を起動しているターミナルで、以下のコマンドで MCP サーバーを追加します。
 
 ```bash
-python mcp-meridis.py [--redis REDIS_CONFIG_FILE]
+claude mcp add --transport sse mcp-meridis http://127.0.0.1:7860/gradio_api/mcp/sse
 ```
 
-### 引数
+追加後、`/mcp` コマンドで接続状態を確認できます。
 
-- `--redis`（デフォルト: `redis.json`）: Redis設定JSONファイルのパス
-
-### 設定ファイル（redis-sim.json）
-
-Redis接続設定を JSON ファイルで管理します。ファイルが存在しない場合は安全なデフォルト値（127.0.0.1:6379）を使用します。
-
-```json
-{
-  "redis": {
-    "host": "172.22.95.231",
-    "port": 6379
-  },
-  "redis_keys": {
-    "read": "meridis_sim_pub",
-    "write": "meridis_mcp_pub"
-  }
-}
+```
+/mcp
 ```
 
-### 設定ファイル（redis-mgr.json）
+![claudecode](image/claudecode-mcplist.png)
 
-Redis接続設定を JSON ファイルで管理します。ファイルが存在しない場合は安全なデフォルト値（127.0.0.1:6379）を使用します。
+登録済みのサーバー一覧を確認する場合:
 
-```json
-{
-  "redis": {
-    "host": "172.22.95.231",
-    "port": 6379
-  },
-  "redis_keys": {
-    "read": "meridis_mgr_pub",
-    "write": "meridis_mcp_pub"
-  }
-}
+```bash
+claude mcp list
 ```
 
-### 動作
+**設定手順がわからなければ、Claude Code 自身に以下のように依頼するとやってくれます。**
 
-- **起動時処理**: コマンドライン引数を解析し、Redis設定ファイルを読み込み、Redis クライアントを初期化します。
-- **バックグラウンド処理**: 歩行制御は専用スレッドで 10ms 間隔の高精度制御を実行します。
-- **Web インターフェース**: Gradio により http://localhost:7860 （MCP モード時は自動設定）で Web UI を提供します。
+> ```
+> mcp-meridis の MCP サーバーを http://127.0.0.1:7860/gradio_api/mcp/sse で SSE 接続として登録してください
+> mcp-meridis が MCP サーバーとして登録されているか確認してください
+> ```
 
-### Web UI の構成
-
-#### Controlタブ
-- **Home**: 全関節をゼロ位置（ホーム姿勢）に段階的に移行（100ステップ、1秒）
-- **Idle**: 歩行直前の立位姿勢（IK計算済み）に段階的に移行（100ステップ、1秒）
-- **Walk**: 歩行時間（秒）を指定して歩行を開始（Durationフィールドで指定可能）
-- **Stop**: 歩行を停止（その場足踏み経由で安全停止）
-  - `smooth_stop=False`（デフォルト）: 即座にその場足踏みに移行して停止
-  - `smooth_stop=True`: サイクル開始位相で一歩追加してから停止（自然な動作）
-- **Sysreset**: システムリセット信号を送信（data[0]=5556 を1回送信）
-- **Status**: ロボットの状態を表示
-  - 状態（停止中/歩行中）、経過時間、歩行段階
-  - IMU情報: 加速度(x,y,z)、ジャイロ(x,y,z)、姿勢(roll,pitch,yaw)
-  - 転倒判定: roll/pitch ±30度で転倒と判定
-
-#### Paramsタブ  
-- 歩行パラメータ（WalkParams）とリンクパラメータ（LinkParams）の一括取得・編集・設定
-- [取得]ボタンで現在値をテキスト形式で表示
-- テキスト編集後、[設定]ボタンで一括反映
-
-**主要な歩行パラメータ:**
-- `cycle_duration`: 1周期の時間[秒]（デフォルト: 1.2）
-- `forward_stride`: 前後方向の歩幅[m]（デフォルト: 0.02）
-- `foot_lift`: 遊脚の持ち上げ量[m]（デフォルト: 0.014）
-- `hip_swing`: 横方向のスイング量[m]（デフォルト: 0.015）
-- `swing_ratio`: 遊脚期間の比率 0.0-1.0（デフォルト: 0.4）
-- **`smooth_stop`**: 停止時の動作モード（デフォルト: False）
-  - `False`: 即座にその場足踏みに移行して停止（応答性重視）
-  - `True`: サイクル開始位相で一歩追加してから停止（自然さ重視）
-
-#### Redisタブ
-- Redis上の複数キー（meridis_sim_pub、meridis_mcp_pub、meridis_mgr_pub等）から選択してリアルタイムデータを表示
-
-#### InputBufタブ
-- ロボットからの応答データバッファ（buf_input）を表示
-- 開始位置、取得数、小数点桁数を指定して表示可能
-- CSV保存機能付き（buf_input.csv）
-
-#### OutputBufタブ
-- ロボットへの指令データバッファ（buf_output）を表示
-- 開始位置、取得数、小数点桁数を指定して表示可能
-- CSV保存機能付き（buf_output.csv）
-
-#### GetKeyIndexタブ
-- Meridim90配列のキーインデックス一覧を表示
-- 各キーの説明とインデックス番号を確認可能
-
-#### SysInfoタブ
-- システム全体の情報を一括取得（キーインデックス、パラメータ、利用可能機能）
-- AIエージェントがシステムを理解するための情報を提供
+---
 
 ### MCP サーバー機能
 
@@ -233,39 +351,48 @@ AIエージェント（Claude、Cursor等）から利用可能な主要関数：
 - `get_redis_data(key)`: 指定RedisキーのデータをJSON形式で取得
 - `get_system_info()`: システム情報一括取得
 
-### データフロー
+---
 
-```
-ロボット → Redis[meridis_mgr_pub] → mcp-meridis.py → 制御演算 → Redis[meridis_mcp_pub] → ロボット
-```
+### プロンプト例
 
-- **meridis_mgr_pub**: ロボットからの応答データ（IMUセンサー値、モーター実測値など）
-- **meridis_mcp_pub**: ロボットへの指令データ（関節角度指令値、サーボコマンドなど）
+Claude Desktop または Claude Code で mcp-meridis に接続した状態で、以下のようなプロンプトをそのまま入力できます。
 
-### 注記
+#### 基本操作
 
-- バックグラウンド歩行制御は 10ms 間隔で実行され、高精度な時刻同期処理を行います。
-- データバッファは最大 10,000 要素まで格納され、CSV エクスポート機能により解析用データとして出力できます。
-- パラメータ変更は即座に JSON ファイル（walkparam.json、linkparam.json）に保存されます。
-- MCP サーバーモードでは、AIエージェントが全ての制御・監視機能にプログラマティックにアクセス可能です。
-- Redis接続エラー、データ変換エラーは適切にハンドリングされ、エラーメッセージとして出力されます。
+| プロンプト例 | 期待効果 |
+|---|---|
+| ロボットを歩かせてください | デフォルト時間で歩行開始 |
+| 5秒間歩かせてください | 5秒間歩行後に自動停止 |
+| ロボットを停止してください | その場足踏みを経由して安全に停止 |
+| IDLEポジションをとってください | 歩行直前の立位姿勢へ移行 |
+| HOMEポジションをとってください | 全関節をゼロ位置（ホーム姿勢）へ移行 |
+| ロボットの状態を確認してください | 歩行状態・時間・IMU・転倒判定などを表示 |
+| システムリセットを送信してください | リセット信号を送信してシステムを初期化 |
 
-### 例
+#### パラメータ操作
 
-```bash
-# デフォルト設定（redis.json）でMCPサーバー起動
-python mcp-meridis.py
+| プロンプト例 | 期待効果 |
+|---|---|
+| 現在の歩行パラメータを確認してください | 全パラメータの名前・現在値・説明を一覧表示 |
+| 歩行速度を上げてください | 速度関連パラメータを調整して再設定 |
+| 歩幅を小さくして、ゆっくり歩かせてください | `stride_length` 等を変更してから歩行開始 |
 
-# カスタムRedis設定ファイルを指定
-python mcp-meridis.py --redis redis-mgr.json
+#### データ収集
 
-# シミュレーション用Redis設定を指定
-python mcp-meridis.py --redis redis-sim.json
+| プロンプト例 | 期待効果 |
+|---|---|
+| 受信バッファを取得してください | ロボットからの最新受信データを表示 |
+| 歩行データをCSVに保存してください | 受信・送信バッファをそれぞれ CSV ファイルに保存 |
+| システム情報を一括取得してください | パラメータ・Redis設定・状態など全情報をまとめて表示 |
 
-# ヘルプ表示
-python mcp-meridis.py --help
-```
+#### 複合操作
 
-実装の詳細や利用可能なクラス・メソッドについては [mcp-meridis.py](mcp-meridis.py) を参照してください（`WalkController`、`MeridimKeyParams`、各種 Gradio UI 関数など）。
+| プロンプト例 | 期待効果 |
+|---|---|
+| IDLEポジションをとってから、3秒間歩かせて、停止してHOMEに戻してください | IDLE → 歩行(3秒) → 停止 → HOME を順番に実行 |
+| 歩行パラメータを確認して、stride_lengthを0.03に変更してから10秒間歩かせてください | パラメータ確認 → 変更・設定 → 歩行(10秒) を順番に実行 |
+| 歩かせながらステータスを確認して、歩行が終わったらバッファをCSVに保存してください | 歩行開始 → 状態確認 → CSV保存 を順番に実行 |
 
 ---
+## さらに詳しく学びたい人向け
+[SPEC_MCP.md](SPEC_MCP.md)を読み進めてください。
