@@ -133,16 +133,18 @@ python merimujoco.py --redis redis-mcp.json
 
 ```mermaid
 flowchart LR
-  Robot[Robot Simulation/merimujoco.py]
+  Robot[Robot Simulation/MuJoCo]
+  Manager[merimujoco.py]
   Server[mcp-meridis.py]
   subgraph Redis
     ReadKey[meridis_sim_pub<br/>状態データ]
     WriteKey[meridis_mcp_pub<br/>コマンド/目標値]
   end
-  Robot -- 書き込み --> ReadKey
+  Robot <--> Manager
+  Manager -- 書き込み --> ReadKey
   ReadKey -- 読み出し --> Server
   Server -- 書き込み --> WriteKey
-  WriteKey -- 読み出し --> Robot
+  WriteKey -- 読み出し --> Manager
 ```
 
 
@@ -185,12 +187,11 @@ flowchart LR
     ReadKey[meridis_mgr_pub<br/>状態データ]
     WriteKey[meridis_mcp_pub<br/>コマンド/目標値]
   end
-  Robot -- 通信 --> Manager
+  Robot <--> Manager
   Manager -- 書き込み --> ReadKey
   ReadKey -- 読み出し --> Server
   Server -- 書き込み --> WriteKey
   WriteKey -- 読み出し --> Manager
-  Manager -- 制御 --> Robot
 ```
 
 ---
