@@ -51,7 +51,7 @@ class LinkParams:
         return self.THIGH_LENGTH + self.SHANK_LENGTH
 
 
-def load_walk_params(json_path="walkparam-s1.json"):
+def load_walk_params(json_path="walkparam.json"):
     """
     JSONファイルからWalkParamsを読み込む
     Args:
@@ -78,7 +78,7 @@ def load_walk_params(json_path="walkparam-s1.json"):
         return WalkParams()
 
 
-def save_walk_params(params, json_path="walkparam-s1.json"):
+def save_walk_params(params, json_path="walkparam.json"):
     """
     WalkParamsをJSONファイルに保存
     Args:

@@ -121,6 +121,11 @@ def get_key_index_text():
     """Meridim90キーインデックス一覧をテキストで返す"""
     meta = get_meridim_key_meta()
     lines = [f"{k}: {v['index']}  # {v['description']}" for k, v in meta.items()]
+
+    # デバッグプリント
+    #for line in lines:
+    #     print(line)
+
     return '\n'.join(lines)
 
 

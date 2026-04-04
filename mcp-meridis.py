@@ -148,7 +148,7 @@ def set_params_text(text):
     return get_params_text()
 # JSONファイルから初期設定を読み込んでテキストで返す
 def get_initial_params_text():
-    initial_walk = load_walk_params("walkparam-s1.json")
+    initial_walk = load_walk_params("walkparam.json")
     initial_link = load_link_params("linkparam.json")
     walk_dict = dataclasses.asdict(initial_walk)
     link_dict = dataclasses.asdict(initial_link)
