@@ -13,10 +13,18 @@
       "mcp__mcp-meridis__robot_status",
       "mcp__mcp-meridis__set_params_text",
       "mcp__mcp-meridis__robot_walk",
-      "Bash(curl -s http://127.0.0.1:7860/gradio_api/mcp/sse --max-time 5)"
+      "Bash(curl -s http://127.0.0.1:7860/gradio_api/mcp/sse --max-time 5)",
+      "mcp__mcp-meridis__system_reset",
+      "Bash(python report/p6_analysis.py)",
+      "Bash(python -c \"from mrd_walk_ctrl import WalkParams, WalkController; p = WalkParams\\(\\); print\\('arm_swing_enable:', p.arm_swing_enable\\); wc = WalkController\\(p\\); print\\('OK'\\)\")",
+      "Bash(python -c ':*)",
+      "Bash(python report/p6_2_analysis.py)",
+      "mcp__mcp-meridis__robot_idle",
+      "mcp__mcp-meridis__filesave_buf_input"
     ],
     "additionalDirectories": [
-      "c:\\development\\Python\\mcp-meridis"
+      "c:\\development\\Python\\mcp-meridis",
+      "C:\\development\\Python\\mcp-meridis"
     ]
   }
 }

@@ -14,12 +14,10 @@ def param_field(default, description, type_):
 
 @dataclass
 class WalkParams:
-    frame_interval: float = param_field(0.010, "1フレームあたりの時間間隔（固定）[秒] (10ms)", "float")
     phase_offset: float = param_field(np.pi, "左右の足の位相差[rad]", "float")
     init_wait_time: float = param_field(0.0, "初期待機時間[秒]", "float")
     landing_period_ratio: float = param_field(0.10, "両足着地期間の比率 (周期の%、atm_uvc: TERM_FOOT_LAND)", "float")
     weight_shift_duration_ratio: float = param_field(0.25, "重心移動期間の比率 (周期の%)", "float")
-    end_of_simulation: float = param_field(8.0, "シミュレーション終了時間[秒]", "float")
     cycle_duration: float = param_field(1.6, "1周期の時間[秒]", "float")
     swing_ratio: float = param_field(0.4, "遊脚期間の比率 (0.0-1.0、推奨0.4)", "float")
     foot_lift: float = param_field(0.014, "遊脚の持ち上げ量[m]", "float")
@@ -28,7 +26,9 @@ class WalkParams:
     forward_stride: float = param_field(0.02, "前後方向の歩幅[m]", "float")
     duration: float = param_field(8.0, "動作期間[秒]", "float")
     forward_lean_angle: float = param_field(0.0, "歩行中の前傾角度[度]", "float")
-    shoulder_roll_angle: float = param_field(10.0, "歩行中の両肩ロール角度[度]", "float")
+    shoulder_swing_angle: float = param_field(10.0, "腕振り角度振幅[度]（arm_swing_enable=False時は肩ロール固定角、True時は肩ピッチ振幅）", "float")
+    foot_swing_mode: int = param_field(0, "遊脚軌道モード (0:正弦波, 1:サイクロイド)", "int")
+    arm_swing_enable: bool = param_field(False, "腕振り制御有効フラグ (True:位相連動腕振り, False:固定角度)", "bool")
     smooth_stop: bool = param_field(False, "停止時に自動で一歩追加してその場足踏みするか", "bool")
     mix_enable: bool = param_field(False, "ロール角を足首に反映するか", "bool")
     mix_gyro_g: float = param_field(0.001, "ジャイロミキシングゲイン係数", "float")
@@ -179,6 +179,7 @@ class WalkController:
         self.trq_on = 1.0
         self.stop_requested = False  # 安全停止要求フラグ (B2修正)
         self.use_zero_stride = False  # その場足踏みモード（停止準備）
+        self._arm_stop_t = None      # 腕振りフェードアウト開始時刻
         
         # データバッファ
         self.data = [0.0] * msg_size
@@ -207,7 +208,12 @@ class WalkController:
 
         if swing_start <= normalized_phase <= swing_end:
             swing_phase = (normalized_phase - swing_start) / swing_duration
-            return step_height * np.sin(swing_phase * np.pi)
+            if self.params.foot_swing_mode == 1:
+                # サイクロイド: versine プロファイル（着地直前速度ゼロ）
+                return step_height * (1.0 - np.cos(2.0 * np.pi * swing_phase)) / 2.0
+            else:
+                # 正弦波 (mode=0, デフォルト)
+                return step_height * np.sin(swing_phase * np.pi)
         else:
             return 0.0
 
@@ -408,12 +414,41 @@ class WalkController:
             self.data[35] += self.params.forward_lean_angle
             self.data[65] += self.params.forward_lean_angle
 
-        # 歩行中は両肩ロール軸を15度回転
+        # 歩行中の肩制御
         if self.w_sts >= 1:
-            self.data[24] = float(self.trq_on)
-            self.data[25] = float(self.params.shoulder_roll_angle)
-            self.data[54] = float(self.trq_on)
-            self.data[55] = float(self.params.shoulder_roll_angle)
+            if self.w_sts >= 3 and self.params.arm_swing_enable:
+                # 肩ピッチ位相連動腕振り（自然歩行の角運動量補償）
+                # 左腕は右脚と同位相（逆位相差 π）、右腕は左脚と同位相
+                phase_z = 2 * np.pi * ((self.t - (self.params.init_wait_time + self.params.cycle_duration * self.params.weight_shift_duration_ratio)) / self.params.cycle_duration)
+
+                # 停止タイミングで1サイクルかけて振幅をフェードアウト
+                # トリガー: duration残り1サイクル以下 または 手動停止(use_zero_stride)
+                t_remaining = self.params.duration - self.t
+                stopping = self.use_zero_stride or (t_remaining <= self.params.cycle_duration)
+                if stopping:
+                    if self._arm_stop_t is None:
+                        self._arm_stop_t = self.t
+                    fade = max(0.0, 1.0 - (self.t - self._arm_stop_t) / self.params.cycle_duration)
+                else:
+                    self._arm_stop_t = None
+                    fade = 1.0
+                arm_amp = self.params.shoulder_swing_angle * fade
+
+                self.data[22] = float(self.trq_on)   # L_SHOULDER_P_CMD
+                self.data[23] = float(arm_amp * np.sin(phase_z + np.pi))  # L_SHOULDER_P_VAL
+                self.data[52] = float(self.trq_on)   # R_SHOULDER_P_CMD
+                self.data[53] = float(arm_amp * np.sin(phase_z))           # R_SHOULDER_P_VAL
+                # 肩ロールはパラメータ指定の固定角を維持
+                self.data[24] = float(self.trq_on)
+                self.data[25] = float(self.params.shoulder_swing_angle)
+                self.data[54] = float(self.trq_on)
+                self.data[55] = float(self.params.shoulder_swing_angle)
+            else:
+                # 固定ロール角（従来動作 / arm_swing_enable=False）
+                self.data[24] = float(self.trq_on)   # L_SHOULDER_R_CMD
+                self.data[25] = float(self.params.shoulder_swing_angle)  # L_SHOULDER_R_VAL
+                self.data[54] = float(self.trq_on)   # R_SHOULDER_R_CMD
+                self.data[55] = float(self.params.shoulder_swing_angle)  # R_SHOULDER_R_VAL
 
         # Redisからデータを受信（オプション）
         get_data = None
