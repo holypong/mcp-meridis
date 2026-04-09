@@ -26,7 +26,7 @@ class WalkParams:
     forward_stride: float = param_field(0.02, "前後方向の歩幅[m]", "float")
     duration: float = param_field(8.0, "動作期間[秒]", "float")
     forward_lean_angle: float = param_field(0.0, "歩行中の前傾角度[度]", "float")
-    shoulder_swing_angle: float = param_field(10.0, "腕振り角度振幅[度]（arm_swing_enable=False時は肩ロール固定角、True時は肩ピッチ振幅）", "float")
+    arm_swing_angle: float = param_field(10.0, "腕振り角度振幅[度]（arm_swing_enable=False時は肩ロール固定角、True時は肩ピッチ振幅）", "float")
     foot_swing_mode: int = param_field(0, "遊脚軌道モード (0:正弦波, 1:サイクロイド)", "int")
     arm_swing_enable: bool = param_field(False, "腕振り制御有効フラグ (True:位相連動腕振り, False:固定角度)", "bool")
     smooth_stop: bool = param_field(False, "停止時に自動で一歩追加してその場足踏みするか", "bool")
@@ -432,7 +432,7 @@ class WalkController:
                 else:
                     self._arm_stop_t = None
                     fade = 1.0
-                arm_amp = self.params.shoulder_swing_angle * fade
+                arm_amp = self.params.arm_swing_angle * fade
 
                 self.data[22] = float(self.trq_on)   # L_SHOULDER_P_CMD
                 self.data[23] = float(arm_amp * np.sin(phase_z + np.pi))  # L_SHOULDER_P_VAL
@@ -440,15 +440,15 @@ class WalkController:
                 self.data[53] = float(arm_amp * np.sin(phase_z))           # R_SHOULDER_P_VAL
                 # 肩ロールはパラメータ指定の固定角を維持
                 self.data[24] = float(self.trq_on)
-                self.data[25] = float(self.params.shoulder_swing_angle)
+                self.data[25] = float(self.params.arm_swing_angle)
                 self.data[54] = float(self.trq_on)
-                self.data[55] = float(self.params.shoulder_swing_angle)
+                self.data[55] = float(self.params.arm_swing_angle)
             else:
                 # 固定ロール角（従来動作 / arm_swing_enable=False）
                 self.data[24] = float(self.trq_on)   # L_SHOULDER_R_CMD
-                self.data[25] = float(self.params.shoulder_swing_angle)  # L_SHOULDER_R_VAL
+                self.data[25] = float(self.params.arm_swing_angle)  # L_SHOULDER_R_VAL
                 self.data[54] = float(self.trq_on)   # R_SHOULDER_R_CMD
-                self.data[55] = float(self.params.shoulder_swing_angle)  # R_SHOULDER_R_VAL
+                self.data[55] = float(self.params.arm_swing_angle)  # R_SHOULDER_R_VAL
 
         # Redisからデータを受信（オプション）
         get_data = None
