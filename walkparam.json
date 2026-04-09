@@ -12,9 +12,9 @@
   "duration": 5.0,
   "foot_swing_mode": 0,
   "forward_lean_angle": 0.0,
-  "arm_swing_enable": false,
+  "arm_swing_enable": true,
   "arm_swing_phase_offset": 0.0,
-  "arm_swing_angle": 7.0,
+  "arm_swing_angle": 5.0,
   "smooth_stop": false,
   "mix_enable": false,
   "mix_gyro_g": 0.001

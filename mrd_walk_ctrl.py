@@ -27,6 +27,7 @@ class WalkParams:
     duration: float = param_field(8.0, "動作期間[秒]", "float")
     forward_lean_angle: float = param_field(0.0, "歩行中の前傾角度[度]", "float")
     arm_swing_angle: float = param_field(10.0, "腕振り角度振幅[度]（arm_swing_enable=False時は肩ロール固定角、True時は肩ピッチ振幅）", "float")
+    arm_swing_phase_offset: float = param_field(0.0, "腕振り位相先行量[rad]（ヨー角運動量打ち消し用。0=同位相、π/4=45°先行、π/2=90°先行）", "float")
     foot_swing_mode: int = param_field(0, "遊脚軌道モード (0:正弦波, 1:サイクロイド)", "int")
     arm_swing_enable: bool = param_field(False, "腕振り制御有効フラグ (True:位相連動腕振り, False:固定角度)", "bool")
     smooth_stop: bool = param_field(False, "停止時に自動で一歩追加してその場足踏みするか", "bool")
@@ -434,10 +435,11 @@ class WalkController:
                     fade = 1.0
                 arm_amp = self.params.arm_swing_angle * fade
 
+                phase_arm = phase_z + self.params.arm_swing_phase_offset
                 self.data[22] = float(self.trq_on)   # L_SHOULDER_P_CMD
-                self.data[23] = float(arm_amp * np.sin(phase_z + np.pi))  # L_SHOULDER_P_VAL
+                self.data[23] = float(arm_amp * np.sin(phase_arm + np.pi))  # L_SHOULDER_P_VAL
                 self.data[52] = float(self.trq_on)   # R_SHOULDER_P_CMD
-                self.data[53] = float(arm_amp * np.sin(phase_z))           # R_SHOULDER_P_VAL
+                self.data[53] = float(arm_amp * np.sin(phase_arm))           # R_SHOULDER_P_VAL
                 # 肩ロールはパラメータ指定の固定角を維持
                 self.data[24] = float(self.trq_on)
                 self.data[25] = float(self.params.arm_swing_angle)
