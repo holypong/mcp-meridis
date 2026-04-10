@@ -205,12 +205,12 @@ class ZMPEstimator:
         # Y: 左脚ヒップは骨盤中心から -HIP_OFFSET、右脚は +HIP_OFFSET
         lf = np.array([
             lf_raw[0],
-            -self.lp.HIP_YAW_TO_ROLL_OFFSET + lf_raw[1],
+            +self.lp.HIP_YAW_TO_ROLL_OFFSET + lf_raw[1],
             max_z - lf_raw[2],  # 接地時≒0、遊脚時≒foot_lift
         ])
         rf = np.array([
             rf_raw[0],
-            +self.lp.HIP_YAW_TO_ROLL_OFFSET + rf_raw[1],
+            -self.lp.HIP_YAW_TO_ROLL_OFFSET + rf_raw[1],
             max_z - rf_raw[2],
         ])
 
