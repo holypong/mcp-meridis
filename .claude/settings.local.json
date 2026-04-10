@@ -20,7 +20,8 @@
       "Bash(python -c ':*)",
       "Bash(python report/p6_2_analysis.py)",
       "mcp__mcp-meridis__robot_idle",
-      "mcp__mcp-meridis__filesave_buf_input"
+      "mcp__mcp-meridis__filesave_buf_input",
+      "Bash(python p8_analyze.py)"
     ],
     "additionalDirectories": [
       "c:\\development\\Python\\mcp-meridis",

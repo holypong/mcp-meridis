@@ -10,6 +10,8 @@ CSV ログのオフライン解析にも単独で使用できる。
 
 from __future__ import annotations
 
+import json
+import os
 import numpy as np
 from collections import deque
 from dataclasses import dataclass, field
@@ -29,13 +31,31 @@ except ImportError:
 
 @dataclass
 class LinkParams:
-    """ロボットリンクパラメータ（linkparam.json と同じ名称）"""
-    HIP_YAW_TO_ROLL_OFFSET: float = 0.07   # 骨盤中心からヒップロール軸までの横オフセット (m)
-    THIGH_LENGTH: float = 0.065             # 大腿リンク長 (m)
-    SHANK_LENGTH: float = 0.065             # 下腿リンク長 (m)
-    ANKLE_LENGTH: float = 0.04             # 足首リンク長 (m)
-    ANKLE_TO_FOOT: float = 0.05            # 足首から足裏までの高さ (m)
-    SHORTEN_LEG_LENGTH: float = 0.02       # 脚短縮量 (m)
+    """ロボットリンクパラメータ（linkparam.json から読み込む）"""
+    HIP_YAW_TO_ROLL_OFFSET: float
+    THIGH_LENGTH: float
+    SHANK_LENGTH: float
+    ANKLE_LENGTH: float
+    ANKLE_TO_FOOT: float
+    SHORTEN_LEG_LENGTH: float
+    FOOT_HALF_LEN: float
+    FOOT_HALF_WIDTH: float
+
+    @classmethod
+    def from_json(cls, path: str = 'linkparam.json') -> 'LinkParams':
+        """linkparam.json からパラメータを読み込んで返す。ファイルがなければ SystemExit。"""
+        if not os.path.exists(path):
+            import sys
+            sys.exit(f"Error: '{path}' が見つかりません。linkparam.json を配置してください。")
+        with open(path, 'r', encoding='utf-8') as f:
+            d = json.load(f)
+        fields = set(cls.__dataclass_fields__.keys())
+        kwargs = {k: float(v) for k, v in d.items() if k in fields}
+        missing = fields - kwargs.keys()
+        if missing:
+            import sys
+            sys.exit(f"Error: linkparam.json に必要なキーが不足しています: {missing}")
+        return cls(**kwargs)
 
     @property
     def leg_length(self) -> float:
@@ -53,6 +73,10 @@ class ZMPResult:
     support_polygon: np.ndarray         # 支持多角形頂点 shape=(N,2)
     is_stable: bool                     # ZMP が支持多角形内かどうか
     margin: float                       # 余裕量（負なら逸脱）(m)
+    l_foot: np.ndarray = field(default_factory=lambda: np.zeros(2))  # 左足中心 XY (m)
+    r_foot: np.ndarray = field(default_factory=lambda: np.zeros(2))  # 右足中心 XY (m)
+    roll_deg: float = 0.0               # IMU DIR_ROLL [deg]
+    pitch_deg: float = 0.0             # IMU DIR_PITCH [deg]
 
 
 # ---------------------------------------------------------------------------
@@ -87,10 +111,6 @@ class ZMPEstimator:
         'r_foot_x':     77, 'r_foot_y':     78, 'r_foot_z': 79,
     }
 
-    # 足裏形状（半サイズ, m）
-    FOOT_HALF_LEN   = 0.040   # 前後
-    FOOT_HALF_WIDTH = 0.025   # 左右
-
     # 接地判定しきい値（足先 Z が この値以下なら接地とみなす, m）
     CONTACT_THRESHOLD = 0.006
 
@@ -107,6 +127,7 @@ class ZMPEstimator:
         dt: float = 0.01,
         history_len: int = 7,
         lp_alpha: float = 0.25,
+        use_imu_correction: bool = True,
     ):
         """
         Parameters
@@ -119,10 +140,14 @@ class ZMPEstimator:
             CoM 位置の履歴長（数値 2 階微分に使用）
         lp_alpha : float
             加速度ローパスフィルタ係数（0〜1、小さいほど滑らか）
+        use_imu_correction : bool
+            True の場合、DIR_ROLL / DIR_PITCH (idx 12/13) をリンク位置補正に適用する。
+            体幹傾きによる CoM 横ずれを ZMP 計算に反映する。
         """
-        self.lp = link_params or LinkParams()
+        self.lp = link_params if link_params is not None else LinkParams.from_json()
         self.dt = dt
         self.lp_alpha = lp_alpha
+        self.use_imu_correction = use_imu_correction
 
         # CoM 位置の時刻付き履歴
         self._com_hist: deque[Tuple[float, np.ndarray]] = deque(maxlen=history_len)
@@ -159,12 +184,38 @@ class ZMPEstimator:
             v = frame_data[idx] if idx < len(frame_data) else 0.0
             return float(v) if v is not None else 0.0
 
-        # 足先位置（IK 計算済み値、単位 m）
-        lf = np.array([_get('l_foot_x'), _get('l_foot_y'), _get('l_foot_z')])
-        rf = np.array([_get('r_foot_x'), _get('r_foot_y'), _get('r_foot_z')])
+        # IMU 体幹傾き（DMP 推定値、単位: degrees）
+        imu_roll_deg  = float(frame_data[12]) if len(frame_data) > 12 else 0.0
+        imu_pitch_deg = float(frame_data[13]) if len(frame_data) > 13 else 0.0
+        roll_rad  = np.radians(imu_roll_deg)  if self.use_imu_correction else 0.0
+        pitch_rad = np.radians(imu_pitch_deg) if self.use_imu_correction else 0.0
 
-        # FK でリンク CoM 位置を取得
-        link_states = self._fk_link_com(lf, rf)
+        # 足先位置（IK 計算済み値、単位 m）
+        # buf_output に格納された値は股関節相対座標系（ヒップ関節基準）:
+        #   x: 前後方向（前方正）
+        #   y: 左右方向（ヒップ関節からの相対値、0 が基準）
+        #   z: 脚伸展長（下向き正）— 接地時が最大値、遊脚時は足上げ分だけ小さい
+        # → ワールド座標系（骨盤中心基準、z=地面からの高さ）に変換する
+        lf_raw = np.array([_get('l_foot_x'), _get('l_foot_y'), _get('l_foot_z')])
+        rf_raw = np.array([_get('r_foot_x'), _get('r_foot_y'), _get('r_foot_z')])
+
+        # 接地足の伸展長 ≒ max(z) をグラウンドリファレンスとして z を高さに変換
+        max_z = max(float(lf_raw[2]), float(rf_raw[2]))
+
+        # Y: 左脚ヒップは骨盤中心から -HIP_OFFSET、右脚は +HIP_OFFSET
+        lf = np.array([
+            lf_raw[0],
+            -self.lp.HIP_YAW_TO_ROLL_OFFSET + lf_raw[1],
+            max_z - lf_raw[2],  # 接地時≒0、遊脚時≒foot_lift
+        ])
+        rf = np.array([
+            rf_raw[0],
+            +self.lp.HIP_YAW_TO_ROLL_OFFSET + rf_raw[1],
+            max_z - rf_raw[2],
+        ])
+
+        # FK でリンク CoM 位置を取得（IMU 傾き補正付き）
+        link_states = self._fk_link_com(lf, rf, roll_rad=roll_rad, pitch_rad=pitch_rad)
 
         # 全体 CoM
         total_mass = sum(m for _, m in link_states)
@@ -190,6 +241,10 @@ class ZMPEstimator:
             support_polygon=polygon,
             is_stable=is_stable,
             margin=float(margin),
+            l_foot=lf[:2].copy(),
+            r_foot=rf[:2].copy(),
+            roll_deg=imu_roll_deg,
+            pitch_deg=imu_pitch_deg,
         )
 
     def reset(self) -> None:
@@ -202,7 +257,8 @@ class ZMPEstimator:
     # ------------------------------------------------------------------
 
     def _fk_link_com(
-        self, lf: np.ndarray, rf: np.ndarray
+        self, lf: np.ndarray, rf: np.ndarray,
+        roll_rad: float = 0.0, pitch_rad: float = 0.0,
     ) -> List[Tuple[np.ndarray, float]]:
         """
         足先位置からリンク CoM 位置と質量を推定する（簡易 FK）。
@@ -210,7 +266,23 @@ class ZMPEstimator:
         buf_output に格納された IK 計算済み足先位置を起点に
         各リンクの CoM を推定する。
         脚内の各リンク CoM は「隣接関節の中点」で近似。
+
+        roll_rad / pitch_rad が非ゼロの場合、高さに比例した横ずれ補正を適用する。
+        - roll_rad > 0: 右傾き → +Y 方向（ロボット左足側）に CoM がずれる
+        - pitch_rad > 0: 後傾き → -X 方向（後方）に CoM がずれる
+        これにより体幹が傾いたときの ZMP 変動を FK 結果に反映する。
         """
+
+        def _tilt(pos: np.ndarray) -> np.ndarray:
+            """高さ pos[2] に比例した傾き補正を水平成分に加える"""
+            if roll_rad == 0.0 and pitch_rad == 0.0:
+                return pos
+            h = pos[2]
+            return np.array([
+                pos[0] - h * np.sin(pitch_rad),  # 後傾 → 後方にずれ
+                pos[1] + h * np.sin(roll_rad),   # 右傾 → +Y にずれ
+                pos[2],
+            ])
         lp = self.lp
 
         # ---- 骨盤（ペルビス）位置の推定 ----
@@ -242,15 +314,16 @@ class ZMPEstimator:
         r_shank_com = (r_knee + r_ankle) / 2
         r_foot_com  = np.array([rf[0], rf[1], rf[2] + lp.ANKLE_LENGTH / 2])
 
+        # IMU 傾き補正（高さに比例した横ずれ）
         m = self._LINK_MASSES
         return [
-            (pelvis,      m['pelvis']),
-            (l_thigh_com, m['l_thigh']),
-            (l_shank_com, m['l_shank']),
-            (l_foot_com,  m['l_foot']),
-            (r_thigh_com, m['r_thigh']),
-            (r_shank_com, m['r_shank']),
-            (r_foot_com,  m['r_foot']),
+            (_tilt(pelvis),      m['pelvis']),
+            (_tilt(l_thigh_com), m['l_thigh']),
+            (_tilt(l_shank_com), m['l_shank']),
+            (_tilt(l_foot_com),  m['l_foot']),
+            (_tilt(r_thigh_com), m['r_thigh']),
+            (_tilt(r_shank_com), m['r_shank']),
+            (_tilt(r_foot_com),  m['r_foot']),
         ]
 
     def _estimate_acceleration(self) -> np.ndarray:
@@ -319,8 +392,8 @@ class ZMPEstimator:
         scipy が利用可能な場合は凸包を計算。
         ない場合は足裏矩形の AABB をそのまま返す。
         """
-        fhl = self.FOOT_HALF_LEN
-        fhw = self.FOOT_HALF_WIDTH
+        fhl = self.lp.FOOT_HALF_LEN
+        fhw = self.lp.FOOT_HALF_WIDTH
 
         def foot_rect(foot_xy: np.ndarray) -> np.ndarray:
             x, y = float(foot_xy[0]), float(foot_xy[1])

@@ -13,7 +13,7 @@ from matplotlib.patches import Polygon as MplPolygon
 
 # eval_zmp はオプション — なくても joint/foot モードは動作する
 try:
-    from eval_zmp import ZMPEstimator
+    from eval_zmp import ZMPEstimator, LinkParams as ZMPLinkParams
     _EVAL_ZMP_AVAILABLE = True
 except ImportError:
     _EVAL_ZMP_AVAILABLE = False
@@ -126,11 +126,22 @@ class RedisPlotter:
         # Set up the plot
         plt.style.use('dark_background')
         self.fig = plt.figure(figsize=(fig_width, fig_height))
-        gs = self.fig.add_gridspec(3, 1, height_ratios=[1, 1, 1])  # 元の3分割に戻す
-        self.axes = [self.fig.add_subplot(gs[i]) for i in range(3)]
+        if display_mode == 'zmp':
+            # ZMP モードは 4 段：XY平面 / ZMP時系列 / マージン / Roll+Pitch
+            gs = self.fig.add_gridspec(4, 1, height_ratios=[1.2, 0.8, 0.8, 0.8])
+            self.axes = [self.fig.add_subplot(gs[i]) for i in range(4)]
+        else:
+            gs = self.fig.add_gridspec(3, 1, height_ratios=[1, 1, 1])
+            self.axes = [self.fig.add_subplot(gs[i]) for i in range(3)]
         
         # ZMP 評価器の初期化（eval_zmp がある場合のみ）
-        self._zmp_estimator = ZMPEstimator() if _EVAL_ZMP_AVAILABLE else None
+        if _EVAL_ZMP_AVAILABLE:
+            _lp_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'linkparam.json')
+            _lp = ZMPLinkParams.from_json(_lp_path)
+            print(f"ZMPEstimator: loaded linkparam.json")
+            self._zmp_estimator = ZMPEstimator(link_params=_lp)
+        else:
+            self._zmp_estimator = None
 
         # Setup display based on mode
         if self.display_mode == 'zmp':
@@ -285,76 +296,101 @@ class RedisPlotter:
         self._align_xlabels_to_right()
 
     def _setup_zmp_display(self):
-        """ZMP モードの表示セットアップ"""
+        """ZMP モードの表示セットアップ（4段）"""
         self.fig.canvas.manager.set_window_title('ZMP Monitor')
 
         if not _EVAL_ZMP_AVAILABLE:
-            # eval_zmp.py がない場合はメッセージを表示して joint モードにフォールバック
             print("Warning: eval_zmp.py not found. Falling back to joint mode.", file=sys.stderr)
             self.display_mode = 'joint'
             self._setup_joint_display()
             return
 
-        # ---- 上段: ZMP XY 平面（散布図）----
+        # ---- 1段目: ZMP XY 平面（リアルタイム散布図）----
         ax_xy = self.axes[0]
+        self._ax_xy = ax_xy
         ax_xy.set_title('ZMP XY Plane')
         ax_xy.set_xlabel('X: forward (m)')
         ax_xy.set_ylabel('Y: lateral (m)')
-        ax_xy.set_xlim(-0.08, 0.08)
-        ax_xy.set_ylim(-0.10, 0.10)
+        ax_xy.set_xlim(-0.20, 0.20)
+        ax_xy.set_ylim(-0.20, 0.20)
         ax_xy.set_aspect('equal')
         ax_xy.grid(True, alpha=0.3)
-        # 支持多角形パッチ
         self._zmp_polygon_patch = MplPolygon(
             np.zeros((4, 2)), closed=True,
             facecolor='cyan', alpha=0.2, edgecolor='cyan', linewidth=1.5
         )
         ax_xy.add_patch(self._zmp_polygon_patch)
-        # ZMP 点・CoM 点
-        self._zmp_dot,  = ax_xy.plot([], [], 'ro', markersize=10, label='ZMP')
-        self._com_dot,  = ax_xy.plot([], [], 'y^', markersize=8,  label='CoM')
-        ax_xy.legend(loc='upper right', fontsize='small', framealpha=0.7)
-
-        # ---- 中段: ZMP X 時系列 ----
-        ax_x = self.axes[1]
-        ax_x.set_title('ZMP X (forward)')
-        ax_x.set_xlabel('Time (s)')
-        ax_x.set_ylabel('m')
-        ax_x.set_ylim(-0.08, 0.08)
-        ax_x.grid(True, alpha=0.3)
-        self._zmp_x_line, = ax_x.plot([], [], color='red',    linewidth=1.5, label='ZMP X')
-        self._com_x_line, = ax_x.plot([], [], color='yellow', linewidth=1.0, label='CoM X', linestyle='--')
-        ax_x.legend(loc='upper left', fontsize='small', framealpha=0.7)
-
-        # ---- 下段: ZMP Y 時系列 ----
-        ax_y = self.axes[2]
-        ax_y.set_title('ZMP Y (lateral)')
-        ax_y.set_xlabel('Time (s)')
-        ax_y.set_ylabel('m')
-        ax_y.set_ylim(-0.10, 0.10)
-        ax_y.grid(True, alpha=0.3)
-        self._zmp_y_line, = ax_y.plot([], [], color='magenta', linewidth=1.5, label='ZMP Y')
-        self._com_y_line, = ax_y.plot([], [], color='yellow',  linewidth=1.0, label='CoM Y', linestyle='--')
-        ax_y.legend(loc='upper left', fontsize='small', framealpha=0.7)
-
-        # 安定性テキスト
-        self._stability_text = ax_xy.text(
-            0.02, 0.95, 'Stable', transform=ax_xy.transAxes,
-            color='lime', fontsize=11, va='top', fontweight='bold'
+        # 左右の足裏矩形パッチ（個別表示）
+        _est = self._zmp_estimator
+        self._foot_half_len   = _est.lp.FOOT_HALF_LEN   if _est else 0.040
+        self._foot_half_width = _est.lp.FOOT_HALF_WIDTH if _est else 0.025
+        self._l_foot_patch = MplPolygon(
+            np.zeros((4, 2)), closed=True,
+            facecolor='none', edgecolor='lime', linewidth=1.5, linestyle='--'
         )
+        self._r_foot_patch = MplPolygon(
+            np.zeros((4, 2)), closed=True,
+            facecolor='none', edgecolor='yellow', linewidth=1.5, linestyle='--'
+        )
+        ax_xy.add_patch(self._l_foot_patch)
+        ax_xy.add_patch(self._r_foot_patch)
+        self._zmp_dot, = ax_xy.plot([], [], 'ro', markersize=10, label='ZMP')
+        self._com_dot, = ax_xy.plot([], [], 'y^', markersize=8,  label='CoM')
+        ax_xy.legend(loc='upper right', fontsize='small', framealpha=0.7)
+        # 安定性＋IMUロール表示テキスト（タイトルで表示するため不要）
+
+        # ---- 2段目: ZMP X / ZMP Y 時系列 ----
+        ax_xy_ts = self.axes[1]
+        ax_xy_ts.set_title('ZMP X / Y  (forward / lateral)')
+        ax_xy_ts.set_xlabel('Time (s)')
+        ax_xy_ts.set_ylabel('m')
+        ax_xy_ts.set_ylim(-0.12, 0.12)
+        ax_xy_ts.axhline(0, color='gray', linewidth=0.6, linestyle='--')
+        ax_xy_ts.grid(True, alpha=0.3)
+        self._zmp_x_line, = ax_xy_ts.plot([], [], color='red',     linewidth=1.5, label='ZMP X')
+        self._zmp_y_line, = ax_xy_ts.plot([], [], color='magenta',  linewidth=1.5, label='ZMP Y')
+        self._com_x_line, = ax_xy_ts.plot([], [], color='tomato',   linewidth=0.8, label='CoM X', linestyle='--')
+        self._com_y_line, = ax_xy_ts.plot([], [], color='violet',   linewidth=0.8, label='CoM Y', linestyle='--')
+        ax_xy_ts.legend(loc='upper left', fontsize='small', framealpha=0.7, ncol=2)
+
+        # ---- 3段目: ZMP マージン時系列 ----
+        ax_margin = self.axes[2]
+        ax_margin.set_title('ZMP Margin')
+        ax_margin.set_xlabel('Time (s)')
+        ax_margin.set_ylabel('m')
+        ax_margin.axhline(0, color='red', linewidth=1.0, linestyle='--', label='stability limit')
+        ax_margin.grid(True, alpha=0.3)
+        self._margin_line, = ax_margin.plot([], [], color='lime', linewidth=1.5, label='margin')
+        ax_margin.legend(loc='upper left', fontsize='small', framealpha=0.7)
+
+        # ---- 4段目: IMU Roll / Pitch 時系列 ----
+        ax_imu = self.axes[3]
+        ax_imu.set_title('IMU Roll / Pitch')
+        ax_imu.set_xlabel('Time (s)')
+        ax_imu.set_ylabel('deg')
+        ax_imu.axhline(0, color='gray', linewidth=0.6, linestyle='--')
+        ax_imu.grid(True, alpha=0.3)
+        self._roll_line,  = ax_imu.plot([], [], color='orange', linewidth=1.5, label='Roll')
+        self._pitch_line, = ax_imu.plot([], [], color='cyan',   linewidth=1.5, label='Pitch')
+        ax_imu.legend(loc='upper left', fontsize='small', framealpha=0.7)
 
         # ZMP 時系列バッファ
         history_length = self.receiver.get_history_length()
-        self._zmp_t_buf   = deque(maxlen=history_length)
-        self._zmp_x_buf   = deque(maxlen=history_length)
-        self._zmp_y_buf   = deque(maxlen=history_length)
-        self._com_x_buf   = deque(maxlen=history_length)
-        self._com_y_buf   = deque(maxlen=history_length)
+        self._zmp_t_buf    = deque(maxlen=history_length)
+        self._zmp_x_buf    = deque(maxlen=history_length)
+        self._zmp_y_buf    = deque(maxlen=history_length)
+        self._com_x_buf    = deque(maxlen=history_length)
+        self._com_y_buf    = deque(maxlen=history_length)
+        self._margin_buf   = deque(maxlen=history_length)
+        self._roll_buf     = deque(maxlen=history_length)
+        self._pitch_buf    = deque(maxlen=history_length)
 
         self.all_lines = [
             self._zmp_dot, self._com_dot,
-            self._zmp_x_line, self._com_x_line,
-            self._zmp_y_line, self._com_y_line,
+            self._zmp_x_line, self._zmp_y_line,
+            self._com_x_line, self._com_y_line,
+            self._margin_line,
+            self._roll_line, self._pitch_line,
         ]
 
         self._align_xlabels_to_right()
@@ -543,14 +579,14 @@ class RedisPlotter:
         # 表示可能なデータを取得
         plot_data = self.get_visible_data_series()
         
-        # 時間軸の範囲を更新
+        # ZMP モード — x 軸管理は _update_zmp_plot 内で行う
+        if self.display_mode == 'zmp' and self._zmp_estimator is not None:
+            return self._update_zmp_plot(data)
+
+        # 時間軸の範囲を更新（joint / foot モードのみ）
         window_start, window_end = plot_data['window']
         for ax in self.axes:
             ax.set_xlim(window_start, window_end)
-        
-        # ZMP モード
-        if self.display_mode == 'zmp' and self._zmp_estimator is not None:
-            return self._update_zmp_plot(data)
 
         # 各関節データを更新
         time_array = plot_data['time']
@@ -573,7 +609,7 @@ class RedisPlotter:
         return self.all_lines
 
     def _update_zmp_plot(self, data) -> list:
-        """ZMP モードのフレーム更新"""
+        """ZMP モードのフレーム更新（4段）"""
         t = time.time() - self.receiver.get_start_time()
         result = self._zmp_estimator.update(data, t)
 
@@ -586,9 +622,11 @@ class RedisPlotter:
         self._zmp_y_buf.append(result.zmp_y)
         self._com_x_buf.append(result.com_x)
         self._com_y_buf.append(result.com_y)
+        self._margin_buf.append(result.margin)
+        self._roll_buf.append(result.roll_deg)
+        self._pitch_buf.append(result.pitch_deg)
 
-        # ---- XY 平面更新 ----
-        # 支持多角形
+        # ---- 1段目: XY 平面更新 ----
         poly = result.support_polygon
         if poly is not None and len(poly) >= 3:
             self._zmp_polygon_patch.set_xy(poly)
@@ -596,31 +634,69 @@ class RedisPlotter:
             self._zmp_polygon_patch.set_edgecolor(color)
             self._zmp_polygon_patch.set_facecolor(color)
 
+        # 左右の足裏矩形を個別に更新
+        _fhl = self._foot_half_len
+        _fhw = self._foot_half_width
+
+        def _foot_rect(cx, cy):
+            return np.array([
+                [cx + _fhl, cy + _fhw],
+                [cx + _fhl, cy - _fhw],
+                [cx - _fhl, cy - _fhw],
+                [cx - _fhl, cy + _fhw],
+            ])
+
+        self._l_foot_patch.set_xy(_foot_rect(result.l_foot[0], result.l_foot[1]))
+        self._r_foot_patch.set_xy(_foot_rect(result.r_foot[0], result.r_foot[1]))
+
         self._zmp_dot.set_data([result.zmp_x], [result.zmp_y])
         self._com_dot.set_data([result.com_x], [result.com_y])
 
-        # 安定性テキスト
+        # 安定性テキスト（マージン + IMU Roll）
+        margin_cm = result.margin * 100
+        roll_abs = abs(result.roll_deg)
         if result.is_stable:
-            self._stability_text.set_text(f'Stable  margin={result.margin*100:.1f} cm')
-            self._stability_text.set_color('lime')
+            status = f'ZMP XY Plane  [Stable  margin={margin_cm:.1f}cm  Roll={result.roll_deg:.1f}°]'
+            title_color = 'lime' if roll_abs <= 10.0 else 'yellow'
         else:
-            self._stability_text.set_text(f'UNSTABLE  {result.margin*100:.1f} cm')
-            self._stability_text.set_color('red')
+            status = f'ZMP XY Plane  [UNSTABLE  margin={margin_cm:.1f}cm  Roll={result.roll_deg:.1f}°]'
+            title_color = 'red'
+        self._ax_xy.set_title(status, color=title_color, fontsize=9)
 
-        # ---- 時系列グラフ更新（表示窓に合わせてトリミング）----
+        # ---- 時系列グラフ更新（表示窓でトリミング）----
         window_size = self.receiver.get_window_size()
-        t_arr    = np.array(self._zmp_t_buf)
-        mask     = t_arr >= (t - window_size)
-        t_win    = t_arr[mask]
+        t_arr = np.array(self._zmp_t_buf)
+        mask  = t_arr >= (t - window_size)
+        t_win = t_arr[mask]
 
         def _trim(buf):
             return np.array(list(buf))[mask]
 
+        # 2段目: ZMP X/Y + CoM X/Y
         self._zmp_x_line.set_data(t_win, _trim(self._zmp_x_buf))
-        self._com_x_line.set_data(t_win, _trim(self._com_x_buf))
         self._zmp_y_line.set_data(t_win, _trim(self._zmp_y_buf))
+        self._com_x_line.set_data(t_win, _trim(self._com_x_buf))
         self._com_y_line.set_data(t_win, _trim(self._com_y_buf))
 
+        # 3段目: マージン（動的 y 範囲）
+        margin_arr = _trim(self._margin_buf)
+        self._margin_line.set_data(t_win, margin_arr)
+        if len(margin_arr) > 0:
+            ymin = min(-0.01, float(margin_arr.min()) * 1.2)
+            ymax = max(0.02, float(margin_arr.max()) * 1.2)
+            self.axes[2].set_ylim(ymin, ymax)
+
+        # 4段目: Roll / Pitch（動的 y 範囲）
+        roll_arr  = _trim(self._roll_buf)
+        pitch_arr = _trim(self._pitch_buf)
+        self._roll_line.set_data(t_win,  roll_arr)
+        self._pitch_line.set_data(t_win, pitch_arr)
+        if len(roll_arr) > 0:
+            all_imu = np.concatenate([roll_arr, pitch_arr])
+            ylim = max(5.0, float(np.abs(all_imu).max()) * 1.2)
+            self.axes[3].set_ylim(-ylim, ylim)
+
+        # 時間軸を 2〜4 段に適用
         for ax in self.axes[1:]:
             ax.set_xlim(t - window_size, t)
 
