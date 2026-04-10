@@ -322,8 +322,9 @@ class RedisPlotter:
         ax_xy.add_patch(self._zmp_polygon_patch)
         # 左右の足裏矩形パッチ（個別表示）
         _est = self._zmp_estimator
-        self._foot_half_len   = _est.lp.FOOT_HALF_LEN   if _est else 0.040
-        self._foot_half_width = _est.lp.FOOT_HALF_WIDTH if _est else 0.025
+        self._foot_half_len   = _est.lp.FOOT_HALF_LEN            if _est else 0.040
+        self._foot_half_width = _est.lp.FOOT_HALF_WIDTH          if _est else 0.025
+        self._hip_off         = _est.lp.HIP_YAW_TO_ROLL_OFFSET  if _est else 0.030
         self._l_foot_patch = MplPolygon(
             np.zeros((4, 2)), closed=True,
             facecolor='none', edgecolor='lime', linewidth=1.5, linestyle='--'
@@ -635,8 +636,13 @@ class RedisPlotter:
             self._zmp_polygon_patch.set_facecolor(color)
 
         # 左右の足裏矩形を個別に更新
+        # Meridim90から直接取得し、股関節オフセットをここで明示的に適用する
+        # data[47/48]: 左足XY（左ヒップロール関節基準）
+        # data[77/78]: 右足XY（右ヒップロール関節基準）
+        # 左ヒップは骨盤中心から +hip_off、右ヒップは -hip_off
         _fhl = self._foot_half_len
         _fhw = self._foot_half_width
+        _hop = self._hip_off
 
         def _foot_rect(cx, cy):
             return np.array([
@@ -646,8 +652,13 @@ class RedisPlotter:
                 [cx - _fhl, cy + _fhw],
             ])
 
-        self._l_foot_patch.set_xy(_foot_rect(result.l_foot[0], result.l_foot[1]))
-        self._r_foot_patch.set_xy(_foot_rect(result.r_foot[0], result.r_foot[1]))
+        lf_x = float(data[47]) if data is not None and len(data) > 48 else 0.0
+        lf_y = float(data[48]) if data is not None and len(data) > 48 else 0.0
+        rf_x = float(data[77]) if data is not None and len(data) > 78 else 0.0
+        rf_y = float(data[78]) if data is not None and len(data) > 78 else 0.0
+
+        self._l_foot_patch.set_xy(_foot_rect(lf_x, lf_y + _hop))  # 左足: +hip_off
+        self._r_foot_patch.set_xy(_foot_rect(rf_x, rf_y - _hop))  # 右足: -hip_off
 
         self._zmp_dot.set_data([result.zmp_x], [result.zmp_y])
         self._com_dot.set_data([result.com_x], [result.com_y])
