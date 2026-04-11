@@ -246,6 +246,10 @@ flowchart LR
 - `redis_transfer.py` ... Redisへのデータ送信
 - `mrd_walk_ctrl.py` ... 歩行制御ロジック（WalkController、歩行パラメータ管理）
 - `mrd_info.py` ... Meridim90配列キー定義とシステム情報
+- `eval_zmp.py` ... センサレス ZMP 評価ライブラリ（ZMPEstimator クラス）
+- `redis_plotter2.py` ... ZMP・支持多角形のリアルタイム可視化
+- `walkparam.json` ... 歩行パラメータの初期値
+- `linkparam.json` ... リンク長・オフセットパラメータ（実機寸法に合わせて調整）
 - `README.md` ... このファイル
 
 ---
@@ -350,6 +354,7 @@ AIエージェント（Claude、Cursor等）から利用可能な主要関数：
 - `filepathget_buf_input()`: 受信データCSVファイルパス取得
 - `filepathget_buf_output()`: 送信データCSVファイルパス取得
 - `get_redis_data(key)`: 指定RedisキーのデータをJSON形式で取得
+- `get_initial_params_text()`: JSON ファイルの初期値を取得（メモリへの反映には `set_params_text` が必要）
 - `get_system_info()`: システム情報一括取得
 
 ---
