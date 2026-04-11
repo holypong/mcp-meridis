@@ -6,7 +6,9 @@
       "Bash(python3 -:*)",
       "Bash(python3 -c \"import matplotlib; print\\(matplotlib.__version__\\)\")",
       "Bash(python3 -c ':*)",
-      "Bash(python report/p8_analyze.py)"
+      "Bash(python report/p8_analyze.py)",
+      "Bash(cat)",
+      "Read(//tmp/**)"
     ],
     "additionalDirectories": [
       "C:\\development\\Python\\mcp-meridis"
