@@ -400,18 +400,28 @@ class WalkController:
             self.data[61+2*i] = float(np.degrees(r_joint_angles[i]))
 
         # 計算した足位置をmeridim90配列にセット（redis_plotter.pyでプロット可能）
-        FOOT_POS_DECIMALS = 6
-        # Z軸キャリブレーション: 歩行開始時の接地高さを0基準にオフセット
-        # 接地基準Z = LINK_LEG_LENGTH - SHORTEN_LEG_LENGTH（例: 0.065+0.065-0.020 = 0.110 m）
-        foot_z_offset = self.params_link.LINK_LEG_LENGTH - self.params_link.SHORTEN_LEG_LENGTH
-        # 左足位置 (l_foot_x, l_foot_y, l_foot_z) [m]
-        self.data[47] = round(-float(l_target_pos[0]), FOOT_POS_DECIMALS)  # l_foot_x [m] (符号反転: ロボット座標系に合わせる)
-        self.data[48] = round(float(l_target_pos[1]), FOOT_POS_DECIMALS)  # l_foot_y [m]
-        self.data[49] = round(foot_z_offset - float(l_target_pos[2]), FOOT_POS_DECIMALS)  # l_foot_z [m] (接地=0, 遊脚ピーク=+foot_lift)
-        # 右足位置 (r_foot_x, r_foot_y, r_foot_z) [m]
-        self.data[77] = round(-float(r_target_pos[0]), FOOT_POS_DECIMALS)  # r_foot_x [m] (符号反転: ロボット座標系に合わせる)
-        self.data[78] = round(-float(r_target_pos[1]), FOOT_POS_DECIMALS)  # r_foot_y [m] (符号反転: ロボット座標系に合わせる)
-        self.data[79] = round(foot_z_offset - float(r_target_pos[2]), FOOT_POS_DECIMALS)  # r_foot_z [m] (接地=0, 遊脚ピーク=+foot_lift)
+        # 歩行中（w_sts >= 1）のみ計算値を書き込む。歩行前（w_sts == 0）は 0,0,0 を書く。
+        if self.w_sts >= 1:
+            FOOT_POS_DECIMALS = 6
+            # Z軸キャリブレーション: 歩行開始時の接地高さを0基準にオフセット
+            # 接地基準Z = LINK_LEG_LENGTH - SHORTEN_LEG_LENGTH（例: 0.065+0.065-0.020 = 0.110 m）
+            foot_z_offset = self.params_link.LINK_LEG_LENGTH - self.params_link.SHORTEN_LEG_LENGTH
+            # 左足位置 (l_foot_x, l_foot_y, l_foot_z) [m]
+            self.data[47] = round(-float(l_target_pos[0]), FOOT_POS_DECIMALS)  # l_foot_x [m] (符号反転: ロボット座標系に合わせる)
+            self.data[48] = round(float(l_target_pos[1]), FOOT_POS_DECIMALS)  # l_foot_y [m]
+            self.data[49] = round(foot_z_offset - float(l_target_pos[2]), FOOT_POS_DECIMALS)  # l_foot_z [m] (接地=0, 遊脚ピーク=+foot_lift)
+            # 右足位置 (r_foot_x, r_foot_y, r_foot_z) [m]
+            self.data[77] = round(-float(r_target_pos[0]), FOOT_POS_DECIMALS)  # r_foot_x [m] (符号反転: ロボット座標系に合わせる)
+            self.data[78] = round(-float(r_target_pos[1]), FOOT_POS_DECIMALS)  # r_foot_y [m] (符号反転: ロボット座標系に合わせる)
+            self.data[79] = round(foot_z_offset - float(r_target_pos[2]), FOOT_POS_DECIMALS)  # r_foot_z [m] (接地=0, 遊脚ピーク=+foot_lift)
+        else:
+            # 歩行前（初期待機中）は足位置を 0,0,0 にクリア
+            self.data[47] = 0.0  # l_foot_x
+            self.data[48] = 0.0  # l_foot_y
+            self.data[49] = 0.0  # l_foot_z
+            self.data[77] = 0.0  # r_foot_x
+            self.data[78] = 0.0  # r_foot_y
+            self.data[79] = 0.0  # r_foot_z
 
         # 歩行中のみ前傾姿勢を適用
         if self.w_sts >= 2 and self.params.forward_lean_angle != 0.0:
@@ -515,7 +525,7 @@ class WalkController:
     def stop_walk(self):
         """歩行を停止"""
         self.mot_sts = self.IDLE
-        
+
         # 初期位置設定
         l_target_pos = np.array([0.0, 0.0, (self.params_link.LINK_LEG_LENGTH - self.params_link.SHORTEN_LEG_LENGTH)])
         r_target_pos = np.array([0.0, 0.0, (self.params_link.LINK_LEG_LENGTH - self.params_link.SHORTEN_LEG_LENGTH)])
@@ -528,6 +538,14 @@ class WalkController:
             self.data[31+2*i] = float(np.degrees(l_joint_angles[i]))
             self.data[60+2*i] = float(self.trq_on)
             self.data[61+2*i] = float(np.degrees(r_joint_angles[i]))
+
+        # 歩行終了時に足位置を 0,0,0 にクリア
+        self.data[47] = 0.0  # l_foot_x
+        self.data[48] = 0.0  # l_foot_y
+        self.data[49] = 0.0  # l_foot_z
+        self.data[77] = 0.0  # r_foot_x
+        self.data[78] = 0.0  # r_foot_y
+        self.data[79] = 0.0  # r_foot_z
 
         print(f"Time: {self.t:.2f}, State: {self.w_sts} ,data[37]: {self.data[37]}")
 
@@ -582,6 +600,14 @@ class WalkController:
                 self.data[21+2*i] = 0.0
             if transfer is not None and redis_key_write is not None:
                 transfer.set_data(redis_key_write, self.data)
+
+        # 遷移完了後に足位置を 0,0,0 にクリア
+        self.data[47] = 0.0  # l_foot_x
+        self.data[48] = 0.0  # l_foot_y
+        self.data[49] = 0.0  # l_foot_z
+        self.data[77] = 0.0  # r_foot_x
+        self.data[78] = 0.0  # r_foot_y
+        self.data[79] = 0.0  # r_foot_z
 
     def transition_to_stop_walk(self, transfer=None, redis_key_write=None, steps=100):
         """現在位置からIK立位姿勢へ遷移 (Idle用)"""
