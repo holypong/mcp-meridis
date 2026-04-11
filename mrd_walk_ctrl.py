@@ -401,14 +401,17 @@ class WalkController:
 
         # 計算した足位置をmeridim90配列にセット（redis_plotter.pyでプロット可能）
         FOOT_POS_DECIMALS = 6
+        # Z軸キャリブレーション: 歩行開始時の接地高さを0基準にオフセット
+        # 接地基準Z = LINK_LEG_LENGTH - SHORTEN_LEG_LENGTH（例: 0.065+0.065-0.020 = 0.110 m）
+        foot_z_offset = self.params_link.LINK_LEG_LENGTH - self.params_link.SHORTEN_LEG_LENGTH
         # 左足位置 (l_foot_x, l_foot_y, l_foot_z) [m]
-        self.data[47] = round(float(l_target_pos[0]), FOOT_POS_DECIMALS)  # l_foot_x [m]
+        self.data[47] = round(-float(l_target_pos[0]), FOOT_POS_DECIMALS)  # l_foot_x [m] (符号反転: ロボット座標系に合わせる)
         self.data[48] = round(float(l_target_pos[1]), FOOT_POS_DECIMALS)  # l_foot_y [m]
-        self.data[49] = round(float(l_target_pos[2]), FOOT_POS_DECIMALS)  # l_foot_z [m]
+        self.data[49] = round(foot_z_offset - float(l_target_pos[2]), FOOT_POS_DECIMALS)  # l_foot_z [m] (接地=0, 遊脚ピーク=+foot_lift)
         # 右足位置 (r_foot_x, r_foot_y, r_foot_z) [m]
-        self.data[77] = round(float(r_target_pos[0]), FOOT_POS_DECIMALS)  # r_foot_x [m]
-        self.data[78] = round(float(r_target_pos[1]), FOOT_POS_DECIMALS)  # r_foot_y [m]
-        self.data[79] = round(float(r_target_pos[2]), FOOT_POS_DECIMALS)  # r_foot_z [m]
+        self.data[77] = round(-float(r_target_pos[0]), FOOT_POS_DECIMALS)  # r_foot_x [m] (符号反転: ロボット座標系に合わせる)
+        self.data[78] = round(-float(r_target_pos[1]), FOOT_POS_DECIMALS)  # r_foot_y [m] (符号反転: ロボット座標系に合わせる)
+        self.data[79] = round(foot_z_offset - float(r_target_pos[2]), FOOT_POS_DECIMALS)  # r_foot_z [m] (接地=0, 遊脚ピーク=+foot_lift)
 
         # 歩行中のみ前傾姿勢を適用
         if self.w_sts >= 2 and self.params.forward_lean_angle != 0.0:
