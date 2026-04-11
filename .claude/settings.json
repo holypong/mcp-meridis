@@ -5,7 +5,8 @@
       "mcp__mcp-meridis__filesave_buf_output",
       "Bash(python3 -:*)",
       "Bash(python3 -c \"import matplotlib; print\\(matplotlib.__version__\\)\")",
-      "Bash(python3 -c ':*)"
+      "Bash(python3 -c ':*)",
+      "Bash(python report/p8_analyze.py)"
     ],
     "additionalDirectories": [
       "C:\\development\\Python\\mcp-meridis"

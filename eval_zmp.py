@@ -204,6 +204,12 @@ class ZMPEstimator:
         max_z = max(float(lf_raw[2]), float(rf_raw[2]))
 
         # Y: 骨盤中心 → 股関節ロール軸 → 足首ロール軸 → 足裏中心（FOOT_OFFSET_Y）
+        # 2026-04-11 修正後の符号規則:
+        #   lf_raw[1] = l_foot_y = -lateral_swing（スウィング正でマイナス方向）
+        #   rf_raw[1] = r_foot_y = +lateral_swing（lf_raw[1] と逆符号）
+        # → lf[1] = HIP_OFFSET_Y + FOOT_OFFSET_Y - lateral_swing（左足、左寄り正）
+        # → rf[1] = -(HIP_OFFSET_Y + FOOT_OFFSET_Y) + lateral_swing（右足、右寄り負）
+        # hip_swing 増大時はスタンス幅が縮小する時間帯が生じ、支持多角形が変動する
         lf = np.array([
             lf_raw[0],
             +self.lp.HIP_OFFSET_Y + lf_raw[1] + self.lp.FOOT_OFFSET_Y,
