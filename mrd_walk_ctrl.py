@@ -413,7 +413,7 @@ class WalkController:
             self.data[49] = round(foot_z_offset - float(l_target_pos[2]), FOOT_POS_DECIMALS)  # l_foot_z [m] (接地=0, 遊脚ピーク=+foot_lift)
             # 右足位置 (r_foot_x, r_foot_y, r_foot_z) [m]
             self.data[77] = round(-float(r_target_pos[0]), FOOT_POS_DECIMALS)  # r_foot_x [m] (符号反転: ロボット座標系に合わせる)
-            self.data[78] = round(-float(r_target_pos[1]), FOOT_POS_DECIMALS)  # r_foot_y [m] (符号反転: ロボット座標系に合わせる)
+            self.data[78] = round(float(r_target_pos[1]), FOOT_POS_DECIMALS)  # r_foot_y [m]
             self.data[79] = round(foot_z_offset - float(r_target_pos[2]), FOOT_POS_DECIMALS)  # r_foot_z [m] (接地=0, 遊脚ピーク=+foot_lift)
         else:
             # 歩行前（初期待機中）は足位置を 0,0,0 にクリア

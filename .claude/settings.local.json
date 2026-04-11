@@ -24,7 +24,8 @@
       "Bash(python p8_analyze.py)",
       "mcp__mcp-meridis__get_buf_input",
       "Bash(cp c:/development/Python/mcp-meridis/buf_output.csv c:/development/Python/mcp-meridis/log/buf_output_before.csv)",
-      "Bash(cp c:/development/Python/mcp-meridis/buf_input.csv c:/development/Python/mcp-meridis/log/buf_input_before.csv)"
+      "Bash(cp c:/development/Python/mcp-meridis/buf_input.csv c:/development/Python/mcp-meridis/log/buf_input_before.csv)",
+      "Bash(python3 -c ':*)"
     ],
     "additionalDirectories": [
       "c:\\development\\Python\\mcp-meridis",
