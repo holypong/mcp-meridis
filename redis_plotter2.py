@@ -324,7 +324,8 @@ class RedisPlotter:
         _est = self._zmp_estimator
         self._foot_half_len   = _est.lp.FOOT_HALF_LEN            if _est else 0.040
         self._foot_half_width = _est.lp.FOOT_HALF_WIDTH          if _est else 0.025
-        self._hip_off         = _est.lp.HIP_YAW_TO_ROLL_OFFSET  if _est else 0.030
+        self._hip_off         = _est.lp.HIP_OFFSET_Y             if _est else 0.030
+        self._foot_off_y      = _est.lp.FOOT_OFFSET_Y            if _est else 0.0
         self._l_foot_patch = MplPolygon(
             np.zeros((4, 2)), closed=True,
             facecolor='none', edgecolor='lime', linewidth=1.5, linestyle='--'
@@ -643,6 +644,7 @@ class RedisPlotter:
         _fhl = self._foot_half_len
         _fhw = self._foot_half_width
         _hop = self._hip_off
+        _foy = self._foot_off_y
 
         def _foot_rect(cx, cy):
             return np.array([
@@ -657,8 +659,8 @@ class RedisPlotter:
         rf_x = float(data[77]) if data is not None and len(data) > 78 else 0.0
         rf_y = float(data[78]) if data is not None and len(data) > 78 else 0.0
 
-        self._l_foot_patch.set_xy(_foot_rect(lf_x, lf_y + _hop))  # 左足: +hip_off
-        self._r_foot_patch.set_xy(_foot_rect(rf_x, rf_y - _hop))  # 右足: -hip_off
+        self._l_foot_patch.set_xy(_foot_rect(lf_x, lf_y + _hop + _foy))  # 左足: +hip_off +foot_off_y
+        self._r_foot_patch.set_xy(_foot_rect(rf_x, rf_y - _hop - _foy))  # 右足: -hip_off -foot_off_y
 
         self._zmp_dot.set_data([result.zmp_x], [result.zmp_y])
         self._com_dot.set_data([result.com_x], [result.com_y])

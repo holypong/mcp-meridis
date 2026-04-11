@@ -32,12 +32,13 @@ except ImportError:
 @dataclass
 class LinkParams:
     """ロボットリンクパラメータ（linkparam.json から読み込む）"""
-    HIP_YAW_TO_ROLL_OFFSET: float
+    HIP_OFFSET_Y: float
     THIGH_LENGTH: float
     SHANK_LENGTH: float
     ANKLE_LENGTH: float
-    ANKLE_TO_FOOT: float
+    FOOT_OFFSET_Z: float
     SHORTEN_LEG_LENGTH: float
+    FOOT_OFFSET_Y: float
     FOOT_HALF_LEN: float
     FOOT_HALF_WIDTH: float
 
@@ -202,15 +203,15 @@ class ZMPEstimator:
         # 接地足の伸展長 ≒ max(z) をグラウンドリファレンスとして z を高さに変換
         max_z = max(float(lf_raw[2]), float(rf_raw[2]))
 
-        # Y: 左脚ヒップは骨盤中心から -HIP_OFFSET、右脚は +HIP_OFFSET
+        # Y: 骨盤中心 → 股関節ロール軸 → 足首ロール軸 → 足裏中心（FOOT_OFFSET_Y）
         lf = np.array([
             lf_raw[0],
-            +self.lp.HIP_YAW_TO_ROLL_OFFSET + lf_raw[1],
+            +self.lp.HIP_OFFSET_Y + lf_raw[1] + self.lp.FOOT_OFFSET_Y,
             max_z - lf_raw[2],  # 接地時≒0、遊脚時≒foot_lift
         ])
         rf = np.array([
             rf_raw[0],
-            -self.lp.HIP_YAW_TO_ROLL_OFFSET + rf_raw[1],
+            -self.lp.HIP_OFFSET_Y + rf_raw[1] - self.lp.FOOT_OFFSET_Y,
             max_z - rf_raw[2],
         ])
 
@@ -293,8 +294,8 @@ class ZMPEstimator:
         pelvis = np.array([pelvis_xy[0], pelvis_xy[1], pelvis_z])
 
         # ---- ヒップ関節位置 ----
-        l_hip = np.array([pelvis[0], pelvis[1] + lp.HIP_YAW_TO_ROLL_OFFSET, pelvis[2]])
-        r_hip = np.array([pelvis[0], pelvis[1] - lp.HIP_YAW_TO_ROLL_OFFSET, pelvis[2]])
+        l_hip = np.array([pelvis[0], pelvis[1] + lp.HIP_OFFSET_Y, pelvis[2]])
+        r_hip = np.array([pelvis[0], pelvis[1] - lp.HIP_OFFSET_Y, pelvis[2]])
 
         # ---- 膝関節位置（足先から上へ）----
         # 足首 → 膝 の位置は足先 Z + ANKLE_LENGTH + SHANK_LENGTH

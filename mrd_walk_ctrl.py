@@ -36,12 +36,13 @@ class WalkParams:
 
 @dataclass
 class LinkParams:
-    HIP_YAW_TO_ROLL_OFFSET: float = param_field(0.07, "ヨー軸とロール軸の間のオフセット[m]", "float")
+    HIP_OFFSET_Y: float = param_field(0.0215, "腰中心から股関節ロール軸までのY方向オフセット[m]", "float")
     THIGH_LENGTH: float = param_field(0.065, "太ももの長さ[m]", "float")
     SHANK_LENGTH: float = param_field(0.065, "すねの長さ[m]", "float")
     ANKLE_LENGTH: float = param_field(0.040, "足首から足首ロールまでの長さ[m]", "float")
-    ANKLE_TO_FOOT: float = param_field(0.05, "足首ロール軸から足裏までの距離[m]", "float")
+    FOOT_OFFSET_Z: float = param_field(0.05, "足首ロール軸から足裏までの距離[m]", "float")
     SHORTEN_LEG_LENGTH: float = param_field(0.02, "短縮時の脚長[m]", "float")
+    FOOT_OFFSET_Y: float = param_field(0.0206, "足首ロール軸から足裏中心までのY方向オフセット[m]", "float")
 
     @property
     def TOTAL_LEG_LENGTH(self):
