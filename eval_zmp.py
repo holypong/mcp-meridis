@@ -423,7 +423,10 @@ class ZMPEstimator:
                 return pts[hull.vertices]
             except Exception:
                 pass
-        return pts
+        # フォールバック: 重心からの極角でソートして頂点を順序付け（辺の交差を防ぐ）
+        centroid = pts.mean(axis=0)
+        angles = np.arctan2(pts[:, 1] - centroid[1], pts[:, 0] - centroid[0])
+        return pts[np.argsort(angles)]
 
     def _check_stability(
         self, zmp_x: float, zmp_y: float, polygon: np.ndarray
