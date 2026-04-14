@@ -8,7 +8,8 @@
       "Bash(python3 -c ':*)",
       "Bash(python report/p8_analyze.py)",
       "Bash(cat)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Read(//c/Users/holyp/.claude/projects/c--development-Python-mcp-meridis/**)"
     ],
     "additionalDirectories": [
       "C:\\development\\Python\\mcp-meridis"
