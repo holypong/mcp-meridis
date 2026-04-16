@@ -1,0 +1,10 @@
+{
+  "redis": {
+    "host": "127.0.0.1",
+    "port": 6379
+  },
+  "redis_keys": {
+    "read": "meridis_sim_pub",
+    "write": "meridis_calc_pub"
+  }
+}
