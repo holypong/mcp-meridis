@@ -66,8 +66,8 @@ WalkParams loaded from walkparam.json
 LinkParams loaded from linkparam.json
 [Config] Loaded Redis configuration from 'redis.json'
 [Config] Redis: 127.0.0.1:6379
-[Config] Redis Keys: Read='meridis_sim_pub', Write='meridis_mcp_pub'
-Redis list 'meridis_mcp_pub' already exists.
+[Config] Redis Keys: Read='meridis_sim_pub', Write='meridis_ai_pub'
+Redis list 'meridis_ai_pub' already exists.
 [Info] Starting Gradio web interface...
 * Running on local URL:  http://127.0.0.1:7860
 * To create a public link, set `share=True` in `launch()`.
@@ -123,13 +123,13 @@ python merimujoco.py --redis redis-mcp.json
   },
   "redis_keys": {
     "read": "meridis_sim_pub",
-    "write": "meridis_mcp_pub"
+    "write": "meridis_ai_pub"
   }
 }
 ```
 
 - 読み取りキー: `meridis_sim_pub`（シミュレーション側の状態データ）
-- 書き込みキー: `meridis_mcp_pub`（サーバーから送るコマンド/目標値）
+- 書き込みキー: `meridis_ai_pub`（サーバーから送るコマンド/目標値）
 
 ```mermaid
 flowchart LR
@@ -138,7 +138,7 @@ flowchart LR
   Server[mcp-meridis.py]
   subgraph Redis
     ReadKey[meridis_sim_pub<br/>状態データ]
-    WriteKey[meridis_mcp_pub<br/>コマンド/目標値]
+    WriteKey[meridis_ai_pub<br/>コマンド/目標値]
   end
   Robot <--> Manager
   Manager -- 書き込み --> ReadKey
@@ -171,12 +171,12 @@ python meridis_manager.py --mgr mgr_mcp2real.json --foot true
   },
   "redis_keys": {
     "read": "meridis_mgr_pub",
-    "write": "meridis_mcp_pub"
+    "write": "meridis_ai_pub"
   }
 }
 ```
 - 読み取りキー: `meridis_mgr_pub`（実機/管理側の最新状態データ）
-- 書き込みキー: `meridis_mcp_pub`（サーバーから送るコマンド/目標値）
+- 書き込みキー: `meridis_ai_pub`（サーバーから送るコマンド/目標値）
 
 ```mermaid
 flowchart LR
@@ -185,7 +185,7 @@ flowchart LR
   Server[mcp-meridis.py]
   subgraph Redis
     ReadKey[meridis_mgr_pub<br/>状態データ]
-    WriteKey[meridis_mcp_pub<br/>コマンド/目標値]
+    WriteKey[meridis_ai_pub<br/>コマンド/目標値]
   end
   Robot <--> Manager
   Manager -- 書き込み --> ReadKey

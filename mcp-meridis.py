@@ -37,7 +37,7 @@ MSG_CKSM = MSG_SIZE - 1     # Meridim配列のチェックサムの格納場所
 REDIS_HOST = "127.0.0.1"
 REDIS_PORT = 6379
 REDIS_KEY_READ = "meridis_sim_pub"
-REDIS_KEY_WRITE = "meridis_mcp_pub"
+REDIS_KEY_WRITE = "meridis_ai_pub"
 
 # Redisクライアント関連（初期化は後で行う）
 receiver = None
@@ -521,7 +521,7 @@ def robot_status():
 
 # Redisデータ取得関数
 
-REDIS_KEYS = ['meridis_sim_pub', 'meridis_mcp_pub', 'meridis_calc_pub', 'meridis_mgr_pub', 'meridis_console_pub']
+REDIS_KEYS = ['meridis_sim_pub', 'meridis_ai_pub', 'meridis_calc_pub', 'meridis_mgr_pub', 'meridis_console_pub']
 
 def get_redis_data(key: str):
     """指定キーのRedisデータを取得して表示"""

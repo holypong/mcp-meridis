@@ -5,6 +5,6 @@
   },
   "redis_keys": {
     "read": "meridis_mgr_pub",
-    "write": "meridis_mcp_pub"
+    "write": "meridis_ai_pub"
   }
 }
