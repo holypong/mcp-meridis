@@ -91,12 +91,7 @@ TRQ_ON = 1.0            # サーボパワー 0:OFF, 1:ON
 # MeridimKeyParamsのインデックスと説明を表示する関数
 def getmrdkey():
     return get_key_index_text()
-# Gradio UI: MeridimKeyParamsのインデックス表示タブ
-with gr.Blocks() as mrdkey_block:
-    gr.Markdown("""### Meridim90 キーインデックス一覧\n各キーのインデックスと説明を表示します。""")
-    key_btn = gr.Button("一覧取得")
-    key_box = gr.Textbox(label="MeridimKeyParams", lines=30)
-    key_btn.click(fn=getmrdkey, inputs=[], outputs=key_box)
+# MeridimKeyParams UI は demo ブロック内の gr.Tab で定義する
 
 # パラメータ一括取得
 def get_params_text():
@@ -161,21 +156,7 @@ def get_initial_params_text():
         lines.append(f"{k}={v}")
     return "\n".join(lines)
 
-# Gradio パラメータ一括取得・一括設定UI
-with gr.Blocks() as params_block:
-    gr.Markdown("""### パラメータ一括取得・一括設定
-1. [メモリを取得]ボタンで現在のメモリ上の値をテキストボックスに表示
-2. 編集後、[メモリを設定]ボタンで一括反映
-3. [初期設定を取得]で JSON ファイルの初期値を表示（反映するには[メモリを設定]を押す）
-""")
-    with gr.Row():
-        get_btn = gr.Button("メモリを取得")
-        set_btn = gr.Button("メモリを設定")
-        init_btn = gr.Button("初期設定を取得")
-    param_box = gr.Textbox(label="Params", lines=20)
-    get_btn.click(fn=get_params_text, inputs=[], outputs=param_box)
-    set_btn.click(fn=set_params_text, inputs=param_box, outputs=param_box)
-    init_btn.click(fn=get_initial_params_text, inputs=[], outputs=param_box)
+# Params UI は demo ブロック内の gr.Tab で定義する
 
 
 """
@@ -591,7 +572,7 @@ def get_buf_output(start: str = "", count: str = "", decimal: str = ""):
     return "\n".join(lines)
 
 # buf_inputデータ取得（1行1要素で表示）
-def get_buf_input(start: str = "", count: str = "", decimal: str = ""):
+def get_buf_input(start: str = "", count: str = "", decimal: str = "", key: str = ""):
     """
     受信バッファ(buf_input)のデータを範囲指定して取得
     buf_inputはロボットからの応答データ（IMUセンサー値、モーター実測値など）
@@ -599,6 +580,7 @@ def get_buf_input(start: str = "", count: str = "", decimal: str = ""):
         start: 開始位置（空文字列の場合は0から）
         count: 取得する数（空文字列の場合は最後まで）
         decimal: 小数点以下の桁数（デフォルト4）
+        key: 表示対象のRedisキー（情報表示用）
     """
     if buf_index == 0:
         return "(no data)"
@@ -629,13 +611,13 @@ def get_buf_input(start: str = "", count: str = "", decimal: str = ""):
     start_idx = max(0, min(start_idx, buf_index))
     end_idx = max(start_idx, min(end_idx, buf_index))
     
-    lines = []
+    display_key = key if key else REDIS_KEY_READ
+    lines = [f"Key: {display_key}", "---"]
     for i in range(start_idx, end_idx):
-        # 各要素を指定された桁数でフォーマット
         formatted_data = [f"{val:.{decimal_places}f}" for val in buf_input[i]]
         lines.append(f"[{i}] {formatted_data}")
-    
-    if not lines:
+
+    if len(lines) == 2:
         return "(no data in specified range)"
     return "\n".join(lines)
 
@@ -735,96 +717,103 @@ def parse_arguments():
     return parser.parse_args()
 
 
-# redisタブUI
-with gr.Blocks() as redis_block:
-    gr.Markdown("### Redisデータログ\n対象キーを選択して取得します。")
-    with gr.Row():
-        redis_key_dropdown = gr.Dropdown(choices=REDIS_KEYS, label="Key", value=REDIS_KEYS[0])
-        redis_get_btn = gr.Button("取得")
-    redis_log_box = gr.Textbox(label="Data", lines=20, elem_id="redis_log_box")
-    redis_get_btn.click(fn=get_redis_data, inputs=redis_key_dropdown, outputs=redis_log_box).then(
-        fn=None,
-        js="() => { const el = document.querySelector('#redis_log_box textarea'); if(el) el.scrollTop = 0; }"
-    )
-
-# InputBufタブUI
-with gr.Blocks() as inputbuf_block:
-    gr.Markdown("""### Input Buffer (ロボットからの応答)\nbuf_inputはロボットからの応答データ（IMUセンサー値、モーター実測値など）を格納します。""")
-    
-    # CSV保存セクション
-    btn_store_csv_in = gr.Button("buf_inputをCSVに保存")
-    csv_store_result_in = gr.Textbox(label="保存結果", lines=3)
-    btn_store_csv_in.click(fn=filesave_buf_input, inputs=[], outputs=csv_store_result_in)
-    
-    gr.Markdown("---")
-    
-    # データ取得セクション
-    with gr.Row():
-        start_read = gr.Textbox(label="開始位置", placeholder="0")
-        count_read = gr.Textbox(label="量", placeholder="最後まで")
-        decimal_read = gr.Textbox(label="小数点桁数", placeholder="4")
-    btn_read = gr.Button("buf_input取得")
-    buf_box_read = gr.Textbox(label="buf_input (受信)", lines=20)
-    btn_read.click(fn=get_buf_input, inputs=[start_read, count_read, decimal_read], outputs=buf_box_read)
-
-# OutputBufタブUI
-with gr.Blocks() as outputbuf_block:
-    gr.Markdown("""### Output Buffer (ロボットへの指令)\nbuf_outputはロボットへの指令データ（関節角度指令値、サーボコマンドなど）を格納します。""")
-    
-    # CSV保存セクション
-    btn_store_csv_out = gr.Button("buf_outputをCSVに保存")
-    csv_store_result_out = gr.Textbox(label="保存結果", lines=3)
-    btn_store_csv_out.click(fn=filesave_buf_output, inputs=[], outputs=csv_store_result_out)
-    
-    gr.Markdown("---")
-    
-    # データ取得セクション
-    with gr.Row():
-        start_write = gr.Textbox(label="開始位置", placeholder="0")
-        count_write = gr.Textbox(label="量", placeholder="最後まで")
-        decimal_write = gr.Textbox(label="小数点桁数", placeholder="4")
-    btn_write = gr.Button("buf_output取得")
-    buf_box_write = gr.Textbox(label="buf_output (送信)", lines=20)
-    btn_write.click(fn=get_buf_output, inputs=[start_write, count_write, decimal_write], outputs=buf_box_write)
-
-# Controlタブ（Walk / Stop / Sysreset / Status を統合）
-with gr.Blocks() as control_block:
-    gr.Markdown("### Control")
-    with gr.Row():
-        home_btn   = gr.Button("Home")
-        idle_btn   = gr.Button("Idle")
-        walk_btn   = gr.Button("Walk")
-        stop_btn   = gr.Button("Stop")
-        reset_btn  = gr.Button("Sysreset")
-        status_btn = gr.Button("Status")
-        duration_input = gr.Textbox(label="Duration", placeholder="歩行時間（秒）", scale=2)
-    result_out = gr.Textbox(label="Result / Status", lines=20)
-    home_btn.click(fn=robot_home, inputs=[], outputs=result_out)
-    idle_btn.click(fn=robot_idle, inputs=[], outputs=result_out)
-    walk_btn.click(fn=robot_walk, inputs=duration_input, outputs=result_out)
-    stop_btn.click(fn=robot_stop, inputs=[], outputs=result_out)
-    reset_btn.click(fn=system_reset, inputs=[], outputs=result_out)
-    status_btn.click(fn=robot_status, inputs=[], outputs=result_out)
-
-
 def get_system_info():
     """システム情報（キーインデックスとパラメータ）を一括取得"""
     return _get_system_info(get_params_text())
 
-# システム情報タブの追加
-with gr.Blocks() as sysinfo_block:
-    gr.Markdown("""### システム情報
+# メインUI
+with gr.Blocks() as demo:
+    with gr.Tabs():
+        with gr.Tab("Control"):
+            gr.Markdown("### Control")
+            with gr.Row():
+                home_btn       = gr.Button("Home")
+                idle_btn       = gr.Button("Idle")
+                walk_btn       = gr.Button("Walk")
+                stop_btn       = gr.Button("Stop")
+                reset_btn      = gr.Button("Sysreset")
+                status_btn     = gr.Button("Status")
+                duration_input = gr.Textbox(label="Duration", placeholder="歩行時間（秒）", scale=2)
+            result_out = gr.Textbox(label="Result / Status", lines=20)
+            home_btn.click(fn=robot_home, inputs=[], outputs=result_out)
+            idle_btn.click(fn=robot_idle, inputs=[], outputs=result_out)
+            walk_btn.click(fn=robot_walk, inputs=duration_input, outputs=result_out)
+            stop_btn.click(fn=robot_stop, inputs=[], outputs=result_out)
+            reset_btn.click(fn=system_reset, inputs=[], outputs=result_out)
+            status_btn.click(fn=robot_status, inputs=[], outputs=result_out)
+
+        with gr.Tab("Params"):
+            gr.Markdown("""### パラメータ一括取得・一括設定
+1. [メモリを取得]ボタンで現在のメモリ上の値をテキストボックスに表示
+2. 編集後、[メモリを設定]ボタンで一括反映
+3. [初期設定を取得]で JSON ファイルの初期値を表示（反映するには[メモリを設定]を押す）
+""")
+            with gr.Row():
+                get_btn  = gr.Button("メモリを取得")
+                set_btn  = gr.Button("メモリを設定")
+                init_btn = gr.Button("初期設定を取得")
+            param_box = gr.Textbox(label="Params", lines=20)
+            get_btn.click(fn=get_params_text, inputs=[], outputs=param_box)
+            set_btn.click(fn=set_params_text, inputs=param_box, outputs=param_box)
+            init_btn.click(fn=get_initial_params_text, inputs=[], outputs=param_box)
+
+        with gr.Tab("Redis") as redis_tab:
+            gr.Markdown("### Redisデータログ\n対象キーを選択して取得します。")
+            with gr.Row():
+                redis_key_dropdown = gr.Dropdown(choices=REDIS_KEYS, label="Key", value=REDIS_KEY_READ)
+                redis_get_btn = gr.Button("取得")
+            redis_log_box = gr.Textbox(label="Data", lines=20, elem_id="redis_log_box")
+            redis_get_btn.click(fn=get_redis_data, inputs=redis_key_dropdown, outputs=redis_log_box).then(
+                fn=None,
+                js="() => { const el = document.querySelector('#redis_log_box textarea'); if(el) el.scrollTop = 0; }"
+            )
+
+        with gr.Tab("InputBuf") as inputbuf_tab:
+            gr.Markdown("""### Input Buffer (ロボットからの応答)\nbuf_inputはロボットからの応答データ（IMUセンサー値、モーター実測値など）を格納します。""")
+            inputbuf_key_dropdown = gr.Dropdown(choices=REDIS_KEYS, label="Key", value=REDIS_KEY_READ)
+            btn_store_csv_in = gr.Button("buf_inputをCSVに保存")
+            csv_store_result_in = gr.Textbox(label="保存結果", lines=3)
+            btn_store_csv_in.click(fn=filesave_buf_input, inputs=[], outputs=csv_store_result_in)
+            gr.Markdown("---")
+            with gr.Row():
+                start_read   = gr.Textbox(label="開始位置", placeholder="0")
+                count_read   = gr.Textbox(label="量", placeholder="最後まで")
+                decimal_read = gr.Textbox(label="小数点桁数", placeholder="4")
+            btn_read = gr.Button("buf_input取得")
+            buf_box_read = gr.Textbox(label="buf_input (受信)", lines=20)
+            btn_read.click(fn=get_buf_input, inputs=[start_read, count_read, decimal_read, inputbuf_key_dropdown], outputs=buf_box_read)
+
+        with gr.Tab("OutputBuf"):
+            gr.Markdown("""### Output Buffer (ロボットへの指令)\nbuf_outputはロボットへの指令データ（関節角度指令値、サーボコマンドなど）を格納します。""")
+            btn_store_csv_out = gr.Button("buf_outputをCSVに保存")
+            csv_store_result_out = gr.Textbox(label="保存結果", lines=3)
+            btn_store_csv_out.click(fn=filesave_buf_output, inputs=[], outputs=csv_store_result_out)
+            gr.Markdown("---")
+            with gr.Row():
+                start_write   = gr.Textbox(label="開始位置", placeholder="0")
+                count_write   = gr.Textbox(label="量", placeholder="最後まで")
+                decimal_write = gr.Textbox(label="小数点桁数", placeholder="4")
+            btn_write = gr.Button("buf_output取得")
+            buf_box_write = gr.Textbox(label="buf_output (送信)", lines=20)
+            btn_write.click(fn=get_buf_output, inputs=[start_write, count_write, decimal_write], outputs=buf_box_write)
+
+        with gr.Tab("GetKeyIndex"):
+            gr.Markdown("""### Meridim90 キーインデックス一覧\n各キーのインデックスと説明を表示します。""")
+            key_btn = gr.Button("一覧取得")
+            key_box = gr.Textbox(label="MeridimKeyParams", lines=30)
+            key_btn.click(fn=getmrdkey, inputs=[], outputs=key_box)
+
+        with gr.Tab("SysInfo"):
+            gr.Markdown("""### システム情報
 このタブでは、Meridim90のキーインデックス、歩行パラメータ、リンクパラメータ、使用可能なスキルの一覧を一括で取得できます。
 AIエージェントはこの情報を使ってシステムを理解します。""")
-    sysinfo_btn = gr.Button("情報取得")
-    sysinfo_box = gr.Textbox(label="System Info", lines=50)
-    sysinfo_btn.click(fn=get_system_info, inputs=[], outputs=sysinfo_box)
+            sysinfo_btn = gr.Button("情報取得")
+            sysinfo_box = gr.Textbox(label="System Info", lines=50)
+            sysinfo_btn.click(fn=get_system_info, inputs=[], outputs=sysinfo_box)
 
-# MeridimKeyParamsタブも追加
-demo = gr.TabbedInterface(
-    [control_block, params_block, redis_block, inputbuf_block, outputbuf_block, mrdkey_block, sysinfo_block],
-    ["Control", "Params", "Redis", "InputBuf", "OutputBuf", "GetKeyIndex", "SysInfo"]
-)
+    # タブを開くタイミングでドロップダウンを現在のキーで更新
+    redis_tab.select(fn=lambda: gr.update(value=REDIS_KEY_READ), outputs=redis_key_dropdown)
+    inputbuf_tab.select(fn=lambda: gr.update(value=REDIS_KEY_READ), outputs=inputbuf_key_dropdown)
 
 def main():
     """メイン関数 - コマンドライン引数を処理してGradioアプリを起動"""
