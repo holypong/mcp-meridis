@@ -34,6 +34,9 @@ GradioによるWeb UIと、Redisを用いたロボット状態の送受信に対
 - **Redis連携**  
   ロボット状態の送受信をRedis経由で実施
 
+- **Redisキー動的切替**  
+  Web UIおよびMCPツール（`set_redis_key_read` / `get_redis_key_read`）から、受信データソース（Redisキー）をリアルタイムに切り替え可能。シミュレーション・実機・管理プロセスなど複数のソースを無停止で切り替えられる
+
 ## 利用方法
 
 ### 前提条件
@@ -221,12 +224,12 @@ flowchart LR
 
 
 - **Redisタブ**  
-  Redisキーを選択してリアルタイムデータを表示
+  Redisキーをドロップダウンで選択してリアルタイムデータを表示（タブを開くたびに現在キーで更新）
 
 ![redis](image/mcp-meridis-redis.png)
 
 - **InputBufタブ**  
-  ロボットとの受信データバッファを表示・CSV保存
+  受信データソースのRedisキーをドロップダウンで選択・切り替え（タブを開くたびに現在キーで更新）。バッファ内容の表示・CSV保存も可能
 
 - **OutputBufタブ**  
   ロボットとの送信データバッファを表示・CSV保存
@@ -347,13 +350,15 @@ AIエージェント（Claude、Cursor等）から利用可能な主要関数：
 - `robot_idle()`: IDLE姿勢（歩行直前立位）へ移行
 - `robot_status()`: ロボット状態確認
 - `system_reset()`: システムリセット
-- `get_buf_input(start, count, decimal)`: 受信データバッファ取得
 - `get_buf_output(start, count, decimal)`: 送信データバッファ取得
 - `filesave_buf_input()`: 受信データをCSV保存
 - `filesave_buf_output()`: 送信データをCSV保存
 - `filepathget_buf_input()`: 受信データCSVファイルパス取得
 - `filepathget_buf_output()`: 送信データCSVファイルパス取得
 - `get_redis_data(key)`: 指定RedisキーのデータをJSON形式で取得
+- `set_redis_key_read(key)`: 受信データソースのRedisキー（`REDIS_KEY_READ`）を変更（即時反映）
+- `get_redis_key_read()`: 現在の受信RedisキーとキーID一覧を取得
+- `get_buf_input(start, count, decimal, key)`: 受信データバッファ取得（`key`省略時は現在の`REDIS_KEY_READ`を使用）
 - `get_initial_params_text()`: JSON ファイルの初期値を取得（メモリへの反映には `set_params_text` が必要）
 - `get_system_info()`: システム情報一括取得
 
@@ -382,6 +387,13 @@ Claude Desktop または Claude Code で mcp-meridis に接続した状態で、
 | 現在の歩行パラメータを確認してください | 全パラメータの名前・現在値・説明を一覧表示 |
 | 歩行速度を上げてください | 速度関連パラメータを調整して再設定 |
 | 歩幅を小さくして、ゆっくり歩かせてください | `stride_length` 等を変更してから歩行開始 |
+
+#### Redisキー操作
+
+| プロンプト例 | 期待効果 |
+|---|---|
+| 現在の受信Redisキーを確認してください | `get_redis_key_read` で現在キーと有効キー一覧を表示 |
+| 受信キーをmeridis_mgr_pubに切り替えてください | `set_redis_key_read("meridis_mgr_pub")` を即時反映 |
 
 #### データ収集
 

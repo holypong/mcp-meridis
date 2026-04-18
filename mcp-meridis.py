@@ -504,6 +504,29 @@ def robot_status():
 
 REDIS_KEYS = ['meridis_sim_pub', 'meridis_ai_pub', 'meridis_calc_pub', 'meridis_mgr_pub', 'meridis_console_pub']
 
+def set_redis_key_read(key: str) -> str:
+    """
+    Redisの読み取りキー(REDIS_KEY_READ)を変更する。
+    ロボットからの受信データソースが即座に切り替わる。
+    Args:
+        key: 設定するRedisキー名。有効値: meridis_sim_pub, meridis_ai_pub, meridis_calc_pub, meridis_mgr_pub, meridis_console_pub
+    Returns:
+        設定結果メッセージ
+    """
+    global REDIS_KEY_READ
+    if key not in REDIS_KEYS:
+        return f"error: invalid key '{key}'. valid keys: {', '.join(REDIS_KEYS)}"
+    REDIS_KEY_READ = key
+    return f"ok: REDIS_KEY_READ = '{key}'"
+
+def get_redis_key_read() -> str:
+    """
+    現在のRedis読み取りキー(REDIS_KEY_READ)を返す。
+    Returns:
+        現在設定されているキー名と有効なキー一覧
+    """
+    return f"REDIS_KEY_READ: '{REDIS_KEY_READ}'\nvalid keys: {', '.join(REDIS_KEYS)}"
+
 def get_redis_data(key: str):
     """指定キーのRedisデータを取得して表示"""
     try:
@@ -770,7 +793,12 @@ with gr.Blocks() as demo:
 
         with gr.Tab("InputBuf") as inputbuf_tab:
             gr.Markdown("""### Input Buffer (ロボットからの応答)\nbuf_inputはロボットからの応答データ（IMUセンサー値、モーター実測値など）を格納します。""")
-            inputbuf_key_dropdown = gr.Dropdown(choices=REDIS_KEYS, label="Key", value=REDIS_KEY_READ)
+            with gr.Row():
+                inputbuf_key_dropdown = gr.Dropdown(choices=REDIS_KEYS, label="Key", value=REDIS_KEY_READ)
+                inputbuf_key_get_btn  = gr.Button("現在のキーを確認", scale=1)
+            inputbuf_key_status = gr.Textbox(label="キー設定結果", lines=2, interactive=False)
+            inputbuf_key_dropdown.change(fn=set_redis_key_read, inputs=inputbuf_key_dropdown, outputs=inputbuf_key_status)
+            inputbuf_key_get_btn.click(fn=get_redis_key_read, inputs=[], outputs=inputbuf_key_status)
             btn_store_csv_in = gr.Button("buf_inputをCSVに保存")
             csv_store_result_in = gr.Textbox(label="保存結果", lines=3)
             btn_store_csv_in.click(fn=filesave_buf_input, inputs=[], outputs=csv_store_result_in)
