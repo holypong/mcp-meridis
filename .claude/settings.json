@@ -15,7 +15,11 @@
       "mcp__mcp-meridis__set_redis_key_read",
       "Bash(cp /c/development/mcp-meridis/buf_input.csv /c/development/mcp-meridis/log/buf_input-real.csv)",
       "Bash(cp /c/development/mcp-meridis/buf_output.csv /c/development/mcp-meridis/log/buf_output-real.csv)",
-      "Bash(python tools/plot_imu_compare.py)"
+      "Bash(python tools/plot_imu_compare.py)",
+      "mcp__mcp-meridis__get_redis_key_read",
+      "Bash(cp \"c:/development/mcp-meridis/buf_input.csv\" \"c:/development/mcp-meridis/log/buf_input-real-jyrofeedback.csv\")",
+      "Bash(cp \"c:/development/mcp-meridis/buf_output.csv\" \"c:/development/mcp-meridis/log/buf_output-real-jyrofeedback.csv\")",
+      "Bash(python tools/plot_imu_compare_gyrofeedback.py)"
     ],
     "additionalDirectories": [
       "C:\\development\\Python\\mcp-meridis"
