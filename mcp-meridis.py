@@ -22,11 +22,23 @@ import os
 import json
 import argparse
 import dataclasses
+from dataclasses import dataclass, field
 import re
 from mrd_walk_ctrl import WalkController, WalkParams, LinkParams, load_walk_params, load_link_params, save_walk_params, save_link_params
 from mrd_info import MeridimKeyParams, get_key_index_text, get_system_info as _get_system_info
 
 # 20260103 安定版
+
+@dataclass
+class PadAnalog:
+    x: float = 0.0
+    y: float = 0.0
+
+@dataclass
+class PadState:
+    btn: int = 0
+    analogl: PadAnalog = field(default_factory=PadAnalog)
+    analogr: PadAnalog = field(default_factory=PadAnalog)
 
 # 定数
 MSG_SIZE = 90               # Meridim配列の長さ
@@ -543,6 +555,37 @@ def get_redis_data(key: str):
         return f"error: {e}"
 
 
+def get_pad_data(key: str):
+    """指定キーのRedisデータからPADコントローラ値を取得して表示"""
+    try:
+        client = receiver.redis_client if receiver else None
+        if client is None:
+            return "error: Redis client not initialized"
+        d = client.hgetall(key)
+        if not d:
+            return f"(no data for key: {key})"
+        arr = [float(d[str(i)]) if str(i) in d else 0.0 for i in range(len(d))]
+        if len(arr) < 19:
+            return f"error: データ不足 ({len(arr)} 要素、最低19必要)"
+        pad = PadState(
+            btn=int(arr[15]),
+            analogl=PadAnalog(x=arr[16], y=arr[17]),
+            analogr=PadAnalog(x=arr[18], y=arr[17]),
+        )
+        lines = [
+            f"Key: {key}",
+            "---",
+            f"pad.btn = {pad.btn}",
+            f"pad.analogl.x = {pad.analogl.x:.2f}",
+            f"pad.analogl.y = {pad.analogl.y:.2f}",
+            f"pad.analogr.x = {pad.analogr.x:.2f}",
+            f"pad.analogr.y = {pad.analogr.y:.2f}",
+        ]
+        return "\n".join(lines)
+    except Exception as e:
+        return f"error: {e}"
+
+
 # buf_output/buf_inputデータ取得関数
 
 # buf_outputデータ取得（1行1要素で表示）
@@ -785,11 +828,13 @@ with gr.Blocks() as demo:
             with gr.Row():
                 redis_key_dropdown = gr.Dropdown(choices=REDIS_KEYS, label="Key", value=REDIS_KEY_READ)
                 redis_get_btn = gr.Button("取得")
+                redis_pad_btn = gr.Button("PAD取得")
             redis_log_box = gr.Textbox(label="Data", lines=20, elem_id="redis_log_box")
             redis_get_btn.click(fn=get_redis_data, inputs=redis_key_dropdown, outputs=redis_log_box).then(
                 fn=None,
                 js="() => { const el = document.querySelector('#redis_log_box textarea'); if(el) el.scrollTop = 0; }"
             )
+            redis_pad_btn.click(fn=get_pad_data, inputs=redis_key_dropdown, outputs=redis_log_box)
 
         with gr.Tab("InputBuf") as inputbuf_tab:
             gr.Markdown("""### Input Buffer (ロボットからの応答)\nbuf_inputはロボットからの応答データ（IMUセンサー値、モーター実測値など）を格納します。""")
