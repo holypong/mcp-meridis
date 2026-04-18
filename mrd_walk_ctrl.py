@@ -32,7 +32,8 @@ class WalkParams:
     arm_swing_enable: bool = param_field(False, "腕振り制御有効フラグ (True:位相連動腕振り, False:固定角度)", "bool")
     smooth_stop: bool = param_field(False, "停止時に自動で一歩追加してその場足踏みするか", "bool")
     mix_enable: bool = param_field(False, "ロール角を足首に反映するか", "bool")
-    mix_gyro_g: float = param_field(0.001, "ジャイロミキシングゲイン係数", "float")
+    mix_gyro_g_roll:  float = param_field(0.0001, "ジャイロミキシングゲイン係数（Roll/X軸）", "float")
+    mix_gyro_g_pitch: float = param_field(0.0002, "ジャイロミキシングゲイン係数（Pitch/Y軸）", "float")
 
 @dataclass
 class LinkParams:
@@ -239,21 +240,20 @@ class WalkController:
         """
         gyro_x = gyro_values[0]
         gyro_y = gyro_values[1]
-        
-        mix_gyro_g = self.params.mix_gyro_g  # data[]は度単位のためdeg2rad変換不要
+
+        g_roll  = self.params.mix_gyro_g_roll   # data[]は度単位のためdeg2rad変換不要
+        g_pitch = self.params.mix_gyro_g_pitch
 
         # 左脚のミキシング
         for i in range(15):
-            mix_l = 0.0
-            mix_l += gyro_x * float(self.MV_MIX_L[0][i]) * mix_gyro_g
-            mix_l += gyro_y * float(self.MV_MIX_L[1][i]) * mix_gyro_g
+            mix_l  = gyro_x * float(self.MV_MIX_L[0][i]) * g_roll
+            mix_l += gyro_y * float(self.MV_MIX_L[1][i]) * g_pitch
             data[21 + i*2] += mix_l
 
         # 右脚のミキシング
         for i in range(15):
-            mix_r = 0.0
-            mix_r += gyro_x * float(self.MV_MIX_R[0][i]) * mix_gyro_g
-            mix_r += gyro_y * float(self.MV_MIX_R[1][i]) * mix_gyro_g
+            mix_r  = gyro_x * float(self.MV_MIX_R[0][i]) * g_roll
+            mix_r += gyro_y * float(self.MV_MIX_R[1][i]) * g_pitch
             data[51 + i*2] += mix_r
 
     def geometric_leg_ik(self, target_pos, target_roll=None, target_pitch=None, is_left=True):
@@ -424,10 +424,11 @@ class WalkController:
             self.data[78] = 0.0  # r_foot_y
             self.data[79] = 0.0  # r_foot_z
 
-        # 歩行中のみ前傾姿勢を適用
+        # 歩行中のみ前傾姿勢を適用（正値=前傾）
         if self.w_sts >= 2 and self.params.forward_lean_angle != 0.0:
-            self.data[35] += self.params.forward_lean_angle
-            self.data[65] += self.params.forward_lean_angle
+            lean = self.params.forward_lean_angle
+            self.data[35] -= lean   # L thigh_pitch（負方向が前傾）
+            self.data[65] -= lean   # R thigh_pitch
 
         # 歩行中の肩制御
         if self.w_sts >= 1:
