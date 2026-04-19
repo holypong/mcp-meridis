@@ -127,9 +127,17 @@ class RedisPlotter:
         plt.style.use('dark_background')
         self.fig = plt.figure(figsize=(fig_width, fig_height))
         if display_mode == 'zmp':
-            # ZMP モードは 4 段：XY平面 / ZMP時系列 / マージン / Roll+Pitch
+            # ZMP モードは 4 段：上段左=PAD / 上段右=ZMP XY / ZMP時系列 / マージン / Roll+Pitch
             gs = self.fig.add_gridspec(4, 1, height_ratios=[1.2, 0.8, 0.8, 0.8])
-            self.axes = [self.fig.add_subplot(gs[i]) for i in range(4)]
+            gs_top = gs[0].subgridspec(1, 4, width_ratios=[0.5, 1, 1, 2], wspace=0.5)
+            self._ax_pad_btn = self.fig.add_subplot(gs_top[0, 0])
+            self._ax_pad_al  = self.fig.add_subplot(gs_top[0, 1])
+            self._ax_pad_ar  = self.fig.add_subplot(gs_top[0, 2])
+            ax_xy            = self.fig.add_subplot(gs_top[0, 3])
+            self.axes = [ax_xy,
+                         self.fig.add_subplot(gs[1]),
+                         self.fig.add_subplot(gs[2]),
+                         self.fig.add_subplot(gs[3])]
         else:
             gs = self.fig.add_gridspec(3, 1, height_ratios=[1, 1, 1])
             self.axes = [self.fig.add_subplot(gs[i]) for i in range(3)]
@@ -305,7 +313,48 @@ class RedisPlotter:
             self._setup_joint_display()
             return
 
-        # ---- 1段目: ZMP XY 平面（リアルタイム散布図）----
+        # ---- 上段左: PAD コントローラ表示 ----
+        theta_circ = np.linspace(0, 2 * np.pi, 100)
+
+        # BTN 値テキスト
+        ax_btn = self._ax_pad_btn
+        ax_btn.set_xlim(-1, 1)
+        ax_btn.set_ylim(-1, 1)
+        ax_btn.set_aspect('equal')
+        ax_btn.axis('off')
+        ax_btn.set_title('BTN', fontsize=8, color='white', pad=2)
+        self._pad_btn_text = ax_btn.text(
+            0, 0, '0', ha='center', va='center',
+            fontsize=18, color='lime', fontweight='bold'
+        )
+
+        # analogL サークル
+        ax_al = self._ax_pad_al
+        ax_al.set_xlim(-1.1, 1.1)
+        ax_al.set_ylim(-1.1, 1.1)
+        ax_al.set_aspect('equal')
+        ax_al.axis('off')
+        ax_al.set_title('analogL', fontsize=7, color='white', pad=2)
+        ax_al.plot(np.cos(theta_circ), np.sin(theta_circ), color='gray', linewidth=1, alpha=0.5)
+        ax_al.axhline(0, color='gray', linewidth=0.5, alpha=0.3)
+        ax_al.axvline(0, color='gray', linewidth=0.5, alpha=0.3)
+        self._pad_al_line, = ax_al.plot([0, 0], [0, 0], color='cyan', linewidth=2)
+        self._pad_al_dot,  = ax_al.plot([0], [0], 'o', color='cyan', markersize=6)
+
+        # analogR サークル
+        ax_ar = self._ax_pad_ar
+        ax_ar.set_xlim(-1.1, 1.1)
+        ax_ar.set_ylim(-1.1, 1.1)
+        ax_ar.set_aspect('equal')
+        ax_ar.axis('off')
+        ax_ar.set_title('analogR', fontsize=7, color='white', pad=2)
+        ax_ar.plot(np.cos(theta_circ), np.sin(theta_circ), color='gray', linewidth=1, alpha=0.5)
+        ax_ar.axhline(0, color='gray', linewidth=0.5, alpha=0.3)
+        ax_ar.axvline(0, color='gray', linewidth=0.5, alpha=0.3)
+        self._pad_ar_line, = ax_ar.plot([0, 0], [0, 0], color='orange', linewidth=2)
+        self._pad_ar_dot,  = ax_ar.plot([0], [0], 'o', color='orange', markersize=6)
+
+        # ---- 上段右: ZMP XY 平面（リアルタイム散布図）----
         ax_xy = self.axes[0]
         self._ax_xy = ax_xy
         ax_xy.set_title('ZMP XY Plane')
@@ -393,6 +442,8 @@ class RedisPlotter:
             self._com_x_line, self._com_y_line,
             self._margin_line,
             self._roll_line, self._pitch_line,
+            self._pad_al_line, self._pad_al_dot,
+            self._pad_ar_line, self._pad_ar_dot,
         ]
 
         self._align_xlabels_to_right()
@@ -553,7 +604,9 @@ class RedisPlotter:
         # アニメーションが停止中の場合は何もしない
         if self.animation_paused:
             return self.all_lines
-            
+
+        self.fig.canvas.flush_events()
+
         # Redisからデータを更新
         data = self.receiver.get_data()
         
@@ -712,6 +765,19 @@ class RedisPlotter:
         # 時間軸を 2〜4 段に適用
         for ax in self.axes[1:]:
             ax.set_xlim(t - window_size, t)
+
+        # ---- PAD データ更新（redis[15]=btn, [16]=al.x, [17]=al.y, [18]=ar.x, [19]=ar.y）----
+        if data is not None and len(data) >= 20:
+            btn_val = int(data[15])
+            al_x = float(data[16])
+            al_y = float(data[17])
+            ar_x = float(data[18])
+            ar_y = float(data[19])
+            self._pad_btn_text.set_text(str(btn_val))
+            self._pad_al_line.set_data([0, al_x], [0, al_y])
+            self._pad_al_dot.set_data([al_x], [al_y])
+            self._pad_ar_line.set_data([0, ar_x], [0, ar_y])
+            self._pad_ar_dot.set_data([ar_x], [ar_y])
 
         return self.all_lines
 

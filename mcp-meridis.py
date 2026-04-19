@@ -565,12 +565,12 @@ def get_pad_data(key: str):
         if not d:
             return f"(no data for key: {key})"
         arr = [float(d[str(i)]) if str(i) in d else 0.0 for i in range(len(d))]
-        if len(arr) < 19:
-            return f"error: データ不足 ({len(arr)} 要素、最低19必要)"
+        if len(arr) < 20:
+            return f"error: データ不足 ({len(arr)} 要素、最低20必要)"
         pad = PadState(
             btn=int(arr[15]),
             analogl=PadAnalog(x=arr[16], y=arr[17]),
-            analogr=PadAnalog(x=arr[18], y=arr[17]),
+            analogr=PadAnalog(x=arr[18], y=arr[19]),
         )
         lines = [
             f"Key: {key}",

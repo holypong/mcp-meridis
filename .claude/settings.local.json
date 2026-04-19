@@ -28,7 +28,8 @@
       "Bash(python3 -c ':*)",
       "Bash(python -c \"import ast; ast.parse\\(open\\('mcp-meridis.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
       "Bash(python -c \"import ast; ast.parse\\(open\\('c:/development/mcp-meridis/mcp-meridis.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('redis_plotter2.py'\\).read\\(\\)\\); print\\('OK'\\)\")"
     ],
     "additionalDirectories": [
       "c:\\development\\Python\\mcp-meridis",
