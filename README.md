@@ -96,11 +96,12 @@ Redis list 'meridis_ai_pub' already exists.
 
 ### コマンド
 ```bash
-python mcp-meridis.py --redis REDIS_FILE
+python mcp-meridis.py --redis REDIS_FILE --walkparam WALKPARAM_FILE
 ```
 
 ### オプション
-`--redis`（デフォルト: `redis.json`）: `redis-sim.json`と同じ内容が使用されます。
+- `--redis`（デフォルト: `redis.json`）: Redis接続先・キーを記述したJSON設定ファイルを指定します。
+- `--walkparam`（デフォルト: `walkparam.json`）: 起動時に読み込む歩行パラメータJSONファイルを指定します。
 
 
 #### シミュレーションとの接続：redis.json / redis-sim.json
@@ -224,7 +225,9 @@ flowchart LR
 
 
 - **Redisタブ**  
-  Redisキーをドロップダウンで選択してリアルタイムデータを表示（タブを開くたびに現在キーで更新）
+  Redisキーをドロップダウンで選択してリアルタイムデータを表示（タブを開くたびに現在キーで更新）  
+  - **取得**: 選択キーの全Meridim90データを表示  
+  - **PAD取得**: 同キーからPADコントローラ値（ボタン/アナログスティック）のみを抽出して表示
 
 ![redis](image/mcp-meridis-redis.png)
 
@@ -250,7 +253,8 @@ flowchart LR
 - `mrd_walk_ctrl.py` ... 歩行制御ロジック（WalkController、歩行パラメータ管理）
 - `mrd_info.py` ... Meridim90配列キー定義とシステム情報
 - `eval_zmp.py` ... センサレス ZMP 評価ライブラリ（ZMPEstimator クラス）
-- `redis_plotter2.py` ... ZMP・支持多角形のリアルタイム可視化
+- `redis_logger.py` ... PADボタントリガによるRedisデータロガー（`log/logs-*.csv` に保存）
+- `redis_plotter2.py` ... 関節角度・足先位置・ZMP のリアルタイム可視化
 - `walkparam.json` ... 歩行パラメータの初期値
 - `linkparam.json` ... リンク長・オフセットパラメータ（実機寸法に合わせて調整）
 - `README.md` ... このファイル
@@ -356,6 +360,7 @@ AIエージェント（Claude、Cursor等）から利用可能な主要関数：
 - `filepathget_buf_input()`: 受信データCSVファイルパス取得
 - `filepathget_buf_output()`: 送信データCSVファイルパス取得
 - `get_redis_data(key)`: 指定RedisキーのデータをJSON形式で取得
+- `get_pad_data(key)`: 指定RedisキーからPADコントローラ値（ボタン・アナログスティック）を取得
 - `set_redis_key_read(key)`: 受信データソースのRedisキー（`REDIS_KEY_READ`）を変更（即時反映）
 - `get_redis_key_read()`: 現在の受信RedisキーとキーID一覧を取得
 - `get_buf_input(start, count, decimal, key)`: 受信データバッファ取得（`key`省略時は現在の`REDIS_KEY_READ`を使用）
@@ -410,6 +415,73 @@ Claude Desktop または Claude Code で mcp-meridis に接続した状態で、
 | IDLEポジションをとってから、3秒間歩かせて、停止してHOMEに戻してください | IDLE → 歩行(3秒) → 停止 → HOME を順番に実行 |
 | 歩行パラメータを確認して、stride_lengthを0.03に変更してから10秒間歩かせてください | パラメータ確認 → 変更・設定 → 歩行(10秒) を順番に実行 |
 | 歩かせながらステータスを確認して、歩行が終わったらバッファをCSVに保存してください | 歩行開始 → 状態確認 → CSV保存 を順番に実行 |
+
+---
+
+## データ収集ツール：redis_logger.py
+
+PADコントローラのボタンをトリガとして、Redisからリアルタイムにデータを収集し `log/logs-YYYYMMDDHHMM.csv` に保存するスタンドアロンツールです。
+
+### 使い方
+
+```bash
+python redis_logger.py --btn 1                              # ボタン値=1 の間だけ録画
+python redis_logger.py --btn 512 --redis redis-mgr.json    # 実機用Redis設定で録画
+python redis_logger.py --btn 3 --interval 20               # ポーリング間隔 20 ms
+python redis_logger.py --btn 1 --redis-key meridis_sim_pub # Redisキーを直接指定
+```
+
+### オプション
+
+| オプション | デフォルト | 説明 |
+|---|---|---|
+| `--btn` | （必須） | 録画トリガとなる PAD ボタン値（Meridim90[15] の整数値） |
+| `--redis` | `redis.json` | Redis接続設定JSONファイル |
+| `--redis-key` | JSON の `redis_keys.read` | 読み取るRedisキー名（省略時はJSONから取得） |
+| `--interval` | `10.0` ms | ポーリング間隔 |
+
+### 動作仕様
+
+- ボタン値が `--btn` と一致している間だけバッファにデータを蓄積
+- ボタン値が変化するか上限（10000行）に達したら `log/` に自動保存
+- Ctrl+C で中断した場合も残バッファを保存
+- 保存形式は `buf_input.csv` と同じ Meridim90 生データ（ヘッダーなし・90列）
+
+---
+
+## リアルタイム可視化ツール：redis_plotter2.py
+
+Redisからデータを受信し、関節角度・足先位置・ZMP をリアルタイムでグラフ表示するスタンドアロンツールです。
+
+### 使い方
+
+```bash
+python redis_plotter2.py                                    # デフォルト設定で起動（joint モード）
+python redis_plotter2.py --display foot                    # 足先位置モード
+python redis_plotter2.py --display zmp                     # ZMP 評価モード（eval_zmp.py 必須）
+python redis_plotter2.py --redis redis-mgr.json            # 実機用Redis設定
+python redis_plotter2.py --window 10 --width 12 --height 8 # 表示ウィンドウサイズ調整
+```
+
+### オプション
+
+| オプション | デフォルト | 説明 |
+|---|---|---|
+| `--redis` | `redis.json` | Redis接続設定JSONファイル |
+| `--redis-key` | JSON の `redis_keys.read` | 読み取るRedisキー名 |
+| `--display` | `joint` | 表示モード: `joint`（関節角度）/ `foot`（足先位置）/ `zmp`（ZMP評価） |
+| `--window` | `5.0` s | グラフに表示する時間窓（秒） |
+| `--width` | `8` | グラフ幅（インチ） |
+| `--height` | `9` | グラフ高さ（インチ） |
+| `--log` | `off` | `on` でコンソールへのデータ出力を有効化 |
+
+### 表示モードの説明
+
+| モード | 内容 |
+|---|---|
+| `joint` | ベースリンク（IMU）・右脚・左脚の関節角度を時系列グラフで表示 |
+| `foot` | 左右の足先位置（X/Z）を時系列グラフで表示 |
+| `zmp` | PAD状態・ZMP XY軌跡・ZMP時系列・支持多角形マージン・Roll+Pitchを表示（`eval_zmp.py` が必要） |
 
 ---
 
