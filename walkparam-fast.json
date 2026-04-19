@@ -1,0 +1,23 @@
+{
+  "phase_offset": 3.141592653589793,
+  "init_wait_time": 0.0,
+  "landing_period_ratio": 0.1,
+  "weight_shift_duration_ratio": 0.3,
+  "cycle_duration": 0.60,
+  "swing_ratio": 0.30,
+  "foot_lift": 0.020,
+  "hip_swing": 0.0075,
+  "lateral_swing_ratio_1st": 0.8,
+  "forward_stride": 0.020,
+  "max_stride": 0.045,
+  "duration": 5.0,
+  "foot_swing_mode": 0,
+  "forward_lean_angle": 0.0,
+  "arm_swing_enable": true,
+  "arm_swing_phase_offset": 0.0,
+  "arm_swing_angle": 5.0,
+  "smooth_stop": false,
+  "mix_enable": false,
+  "mix_gyro_g_roll": 0.0001,
+  "mix_gyro_g_pitch": 0.0002
+}
