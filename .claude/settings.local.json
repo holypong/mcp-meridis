@@ -34,7 +34,8 @@
       "Bash(python tools/estimate_walk_params.py --log log/logs-202604190935.csv)",
       "Bash(python3 tools/estimate_walk_params.py --log log/logs-202604190956.csv)",
       "Bash(python3 -c \"from astropy.timeseries import LombScargle; print\\('astropy OK'\\)\")",
-      "Bash(python3 -c \"from scipy.signal import lombscargle; print\\('scipy lombscargle OK'\\)\")"
+      "Bash(python3 -c \"from scipy.signal import lombscargle; print\\('scipy lombscargle OK'\\)\")",
+      "Bash(python -m py_compile mcp-meridis.py)"
     ],
     "additionalDirectories": [
       "c:\\development\\Python\\mcp-meridis",
