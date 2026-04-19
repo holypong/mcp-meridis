@@ -28,7 +28,14 @@
       "Bash(python3 -c ':*)",
       "Bash(python -c \"import ast; ast.parse\\(open\\('mcp-meridis.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
       "Bash(python -c \"import ast; ast.parse\\(open\\('c:/development/mcp-meridis/mcp-meridis.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('redis_plotter2.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('/home/hori/mcp-meridis/redis_logger.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python tools/estimate_walk_params.py --log log/logs-202604190935.csv)",
+      "Bash(python3 tools/estimate_walk_params.py --log log/logs-202604190956.csv)",
+      "Bash(python3 -c \"from astropy.timeseries import LombScargle; print\\('astropy OK'\\)\")",
+      "Bash(python3 -c \"from scipy.signal import lombscargle; print\\('scipy lombscargle OK'\\)\")",
+      "Bash(python -m py_compile mcp-meridis.py)"
     ],
     "additionalDirectories": [
       "c:\\development\\Python\\mcp-meridis",
