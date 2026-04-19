@@ -438,6 +438,7 @@ MCP ツール `set_params_text` で実行中に変更でき、`get_params_text` 
 | `hip_swing` | 0.016 m | 横方向の重心移動量。小さいと支持脚への重心移動が不足する |
 | `lateral_swing_ratio_1st` | 0.8 | 歩行開始1歩目の横スイング倍率 |
 | `forward_stride` | 0.02 m | 前後方向の歩幅 |
+| `max_stride` | 0.045 m | 前後方向の最大歩幅 |
 | `forward_lean_angle` | 2.0 deg | 上体の前傾角度（正値=前傾）。太ももピッチと足首ピッチを同量逆方向に調整し、足裏の接地角を維持する |
 | `foot_swing_mode` | 0 | 遊脚軌道モード (0: 正弦波, 1: サイクロイド) |
 

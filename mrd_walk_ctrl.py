@@ -24,6 +24,7 @@ class WalkParams:
     hip_swing: float = param_field(0.018, "横方向のスイング量[m]", "float")
     lateral_swing_ratio_1st: float = param_field(0.8, "初期の重心移動時の横スイング倍率", "float")    
     forward_stride: float = param_field(0.02, "前後方向の歩幅[m]", "float")
+    max_stride: float = param_field(0.045, "前後方向の最大歩幅[m]", "float")
     duration: float = param_field(8.0, "動作期間[秒]", "float")
     forward_lean_angle: float = param_field(0.0, "歩行中の前傾角度[度]", "float")
     arm_swing_angle: float = param_field(10.0, "腕振り角度振幅[度]（arm_swing_enable=False時は肩ロール固定角、True時は肩ピッチ振幅）", "float")
@@ -374,8 +375,9 @@ class WalkController:
                     l_forward = 0.0
                     r_forward = 0.0
                 else:
-                    l_forward = self.calculate_forward_motion(phase_z, self.params.forward_stride)
-                    r_forward = self.calculate_forward_motion(phase_z + self.params.phase_offset, self.params.forward_stride)
+                    stride = min(self.params.forward_stride, self.params.max_stride)
+                    l_forward = self.calculate_forward_motion(phase_z, stride)
+                    r_forward = self.calculate_forward_motion(phase_z + self.params.phase_offset, stride)
 
             l_target_pos = np.array([l_forward, 0.0, (self.params_link.LINK_LEG_LENGTH - self.params_link.SHORTEN_LEG_LENGTH)])
             r_target_pos = np.array([r_forward, 0.0, (self.params_link.LINK_LEG_LENGTH - self.params_link.SHORTEN_LEG_LENGTH)])

@@ -9,6 +9,7 @@
   "hip_swing": 0.016,
   "lateral_swing_ratio_1st": 0.8,
   "forward_stride": 0.02,
+  "max_stride": 0.045,
   "duration": 5.0,
   "foot_swing_mode": 0,
   "forward_lean_angle": 2.0,
