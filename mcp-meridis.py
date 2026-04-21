@@ -467,7 +467,7 @@ def system_reset():
     data[57] = 0.0  # R_ELBOW_Y
     data[59] = 0.0  # R_ELBOW_P
     transfer.set_data(REDIS_KEY_WRITE, data)
-    return "リセット信号（data[0]=5556）を1回送信しました。右腕IKを解除しました。"
+    return "リセット信号（data[0]=5556）を1回送信しました。右腕IKを解除しました。", ""
 
 def robot_status():
     """ロボット状態確認（IMU情報含む）"""
@@ -945,7 +945,7 @@ def main():
                     idle_btn.click(fn=robot_idle, inputs=[], outputs=result_out)
                     walk_btn.click(fn=robot_walk, inputs=duration_input, outputs=result_out)
                     stop_btn.click(fn=robot_stop, inputs=[], outputs=result_out)
-                    reset_btn.click(fn=system_reset, inputs=[], outputs=result_out)
+                    # reset_btn.click は arm_xyz 定義後に記述
                     status_btn.click(fn=robot_status, inputs=[], outputs=result_out)
 
                 with gr.Tab("Params"):
@@ -1026,6 +1026,7 @@ def main():
                     arm_result = gr.Textbox(label="結果", lines=12)
                     arm_get_btn.click(fn=arm_get_state, inputs=[], outputs=[arm_result, arm_xyz])
                     arm_set_btn.click(fn=arm_set_position, inputs=[arm_xyz], outputs=arm_result)
+                    reset_btn.click(fn=system_reset, inputs=[], outputs=[result_out, arm_xyz])
 
                 with gr.Tab("SysInfo"):
                     gr.Markdown("""### システム情報

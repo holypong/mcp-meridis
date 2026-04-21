@@ -37,7 +37,9 @@
       "Bash(python3 -c \"from scipy.signal import lombscargle; print\\('scipy lombscargle OK'\\)\")",
       "Bash(python -m py_compile mcp-meridis.py)",
       "Read(//c/development/**)",
-      "Bash(python mrd_arm_ctrl.py)"
+      "Bash(python mrd_arm_ctrl.py)",
+      "mcp__mcp-meridis__arm_get_state",
+      "mcp__mcp-meridis__arm_set_position"
     ],
     "additionalDirectories": [
       "c:\\development\\Python\\mcp-meridis",
