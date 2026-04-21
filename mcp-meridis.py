@@ -824,11 +824,11 @@ def arm_get_state():
     try:
         arm_params = load_arm_params("linkparam.json")
     except Exception as e:
-        return f"パラメータエラー: {e}", "", "", ""
+        return f"パラメータエラー: {e}", ""
 
     latest = _read_latest_meridim()
     if latest is None:
-        return "データなし (Redis 未接続 or バッファ空)", "", "", ""
+        return "データなし (Redis 未接続 or バッファ空)", ""
 
     sp = latest[53]  # R_SHOULDER_P_VAL
     sr = latest[55]  # R_SHOULDER_R_VAL
@@ -839,27 +839,28 @@ def arm_get_state():
     fk = compute_right_arm_fk(angles, arm_params)
 
     lines = [
-        "右手先位置 (from waist):",
-        f"  X = {fk[0]:.4f} m",
-        f"  Y = {fk[1]:.4f} m",
-        f"  Z = {fk[2]:.4f} m",
-        "",
-        "関節角度:",
+        #"右手先位置 (from waist):",
+        #f"  X = {fk[0]:.4f} m",
+        #f"  Y = {fk[1]:.4f} m",
+        #f"  Z = {fk[2]:.4f} m",
+        #"",
+        "右腕 関節角度:",
         f"  ID53:肩P = {sp:.2f}°",
         f"  ID55:肩R = {sr:.2f}°",
         f"  ID57:肘Y = {ey:.2f}°",
         f"  ID59:肘P = {ep:.2f}°",
     ]
-    return "\n".join(lines), f"{fk[0]:.4f}", f"{fk[1]:.4f}", f"{fk[2]:.4f}"
+    return "\n".join(lines), f"{fk[0]:.4f},{fk[1]:.4f},{fk[2]:.4f}"
 
 
-def arm_set_position(x_str, y_str, z_str):
+def arm_set_position(xyz_str):
     """指定 XYZ [m] へ右手を近づける: IK で関節角を計算して送信"""
     global data
     try:
-        x, y, z = float(x_str), float(y_str), float(z_str)
-    except (ValueError, TypeError):
-        return "X, Y, Z の値を入力してください"
+        parts = [s.strip() for s in xyz_str.split(",")]
+        x, y, z = float(parts[0]), float(parts[1]), float(parts[2])
+    except (ValueError, TypeError, IndexError):
+        return "x,y,z の形式で入力してください（例: 0.10,-0.10,0.065）"
 
     try:
         arm_params = load_arm_params("linkparam.json")
@@ -880,7 +881,7 @@ def arm_set_position(x_str, y_str, z_str):
     transfer.set_data(REDIS_KEY_WRITE, data)
 
     fk = compute_right_arm_fk(angles, arm_params)
-    err_mm = float(np.linalg.norm(fk - target)) * 1000
+    err_mm = float(np.linalg.norm(fk - target))
 
     lines = [
         "IK 計算結果:",
@@ -889,10 +890,10 @@ def arm_set_position(x_str, y_str, z_str):
         f"  肘Y = {angles.elbow_y:.2f}°",
         f"  肘P = {angles.elbow_p:.2f}°",
         "",
-        f"FK 検証 (誤差 {err_mm:.1f} mm):",
-        f"  X = {fk[0]*1000:.1f} mm",
-        f"  Y = {fk[1]*1000:.1f} mm",
-        f"  Z = {fk[2]*1000:.1f} mm",
+        f"FK 検証 (誤差 {err_mm:.4f} m):",
+        f"  X = {fk[0]:.4f} m",
+        f"  Y = {fk[1]:.4f} m",
+        f"  Z = {fk[2]:.4f} m",
         "",
         "送信完了",
     ]
@@ -1017,17 +1018,14 @@ def main():
                     key_btn.click(fn=getmrdkey, inputs=[], outputs=key_box)
 
                 with gr.Tab("Arm"):
-                    gr.Markdown("### 右腕 IK 制御\n目標手先位置 [m] (waist frame) を入力して設定します。取得で現在の手先位置と関節角を読み込みます。")
-                    with gr.Row():
-                        arm_x = gr.Textbox(label="X [m]", placeholder="0.10")
-                        arm_y = gr.Textbox(label="Y [m]", placeholder="-0.10")
-                        arm_z = gr.Textbox(label="Z [m]", placeholder="0.065")
+                    gr.Markdown("### 右腕 IK 制御\n目標手先位置 [m] (waist frame) を x,y,z 形式で入力して設定します。取得で現在の手先位置と関節角を読み込みます。")
                     with gr.Row():
                         arm_get_btn = gr.Button("取得")
                         arm_set_btn = gr.Button("設定")
+                    arm_xyz = gr.Textbox(label="右手 X,Y,Z [m]", placeholder="0.10,-0.10,0.065")
                     arm_result = gr.Textbox(label="結果", lines=12)
-                    arm_get_btn.click(fn=arm_get_state, inputs=[], outputs=[arm_result, arm_x, arm_y, arm_z])
-                    arm_set_btn.click(fn=arm_set_position, inputs=[arm_x, arm_y, arm_z], outputs=arm_result)
+                    arm_get_btn.click(fn=arm_get_state, inputs=[], outputs=[arm_result, arm_xyz])
+                    arm_set_btn.click(fn=arm_set_position, inputs=[arm_xyz], outputs=arm_result)
 
                 with gr.Tab("SysInfo"):
                     gr.Markdown("""### システム情報
