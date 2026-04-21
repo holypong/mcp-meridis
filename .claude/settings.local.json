@@ -39,7 +39,9 @@
       "Read(//c/development/**)",
       "Bash(python mrd_arm_ctrl.py)",
       "mcp__mcp-meridis__arm_get_state",
-      "mcp__mcp-meridis__arm_set_position"
+      "mcp__mcp-meridis__arm_set_position",
+      "Bash(gh api *)",
+      "WebFetch(domain:api.github.com)"
     ],
     "additionalDirectories": [
       "c:\\development\\Python\\mcp-meridis",
