@@ -460,9 +460,14 @@ def system_reset():
     data[0] = 5556
     transfer.set_data(REDIS_KEY_WRITE, data)
     time.sleep(0.01)  # 少し待ってから元に戻す
-    data[0] = 0.0  # 送信後は元に戻す    
+    data[0] = 0.0  # 送信後は元に戻す
+    # 右腕IKを解除: 関節角を0にリセット
+    data[53] = 0.0  # R_SHOULDER_P
+    data[55] = 0.0  # R_SHOULDER_R
+    data[57] = 0.0  # R_ELBOW_Y
+    data[59] = 0.0  # R_ELBOW_P
     transfer.set_data(REDIS_KEY_WRITE, data)
-    return "リセット信号（data[0]=5556）を1回送信しました。"
+    return "リセット信号（data[0]=5556）を1回送信しました。右腕IKを解除しました。"
 
 def robot_status():
     """ロボット状態確認（IMU情報含む）"""
@@ -834,16 +839,16 @@ def arm_get_state():
     fk = compute_right_arm_fk(angles, arm_params)
 
     lines = [
-        "右手先位置 (waist frame):",
-        f"  X = {fk[0]*1000:.1f} mm ({fk[0]:.4f} m)",
-        f"  Y = {fk[1]*1000:.1f} mm ({fk[1]:.4f} m)",
-        f"  Z = {fk[2]*1000:.1f} mm ({fk[2]:.4f} m)",
+        "右手先位置 (from waist):",
+        f"  X = {fk[0]:.4f} m",
+        f"  Y = {fk[1]:.4f} m",
+        f"  Z = {fk[2]:.4f} m",
         "",
         "関節角度:",
-        f"  肩P (idx53) = {sp:.2f}°",
-        f"  肩R (idx55) = {sr:.2f}°",
-        f"  肘Y (idx57) = {ey:.2f}°",
-        f"  肘P (idx59) = {ep:.2f}°",
+        f"  ID53:肩P = {sp:.2f}°",
+        f"  ID55:肩R = {sr:.2f}°",
+        f"  ID57:肘Y = {ey:.2f}°",
+        f"  ID59:肘P = {ep:.2f}°",
     ]
     return "\n".join(lines), f"{fk[0]:.4f}", f"{fk[1]:.4f}", f"{fk[2]:.4f}"
 
