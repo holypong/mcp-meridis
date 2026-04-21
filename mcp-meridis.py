@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 import re
 from mrd_walk_ctrl import WalkController, WalkParams, LinkParams, load_walk_params, load_link_params, save_walk_params, save_link_params
 from mrd_info import MeridimKeyParams, get_key_index_text, get_system_info as _get_system_info
+from mrd_arm_ctrl import ArmAngles, load_arm_params, compute_right_arm_ik, compute_right_arm_fk
 
 # 20260103 安定版
 
@@ -795,6 +796,103 @@ def get_system_info():
     """システム情報（キーインデックスとパラメータ）を一括取得"""
     return _get_system_info(get_params_text())
 
+
+# ─────────────────────────────────────────────────────────
+# 右腕 IK 制御
+# ─────────────────────────────────────────────────────────
+
+def _read_latest_meridim():
+    """最新の Meridim データを取得 (buf_input 優先、なければ Redis 直接読み込み)"""
+    if buf_index > 0:
+        return buf_input[buf_index - 1]
+    client = receiver.redis_client if receiver else None
+    if client is None:
+        return None
+    d = client.hgetall(REDIS_KEY_READ)
+    if not d:
+        return None
+    return [float(d[str(i)]) if str(i) in d else 0.0 for i in range(MSG_SIZE)]
+
+
+def arm_get_state():
+    """右腕の現在状態を読み取り: 手先 XYZ (FK) と関節角度を返す"""
+    try:
+        arm_params = load_arm_params("linkparam.json")
+    except Exception as e:
+        return f"パラメータエラー: {e}", "", "", ""
+
+    latest = _read_latest_meridim()
+    if latest is None:
+        return "データなし (Redis 未接続 or バッファ空)", "", "", ""
+
+    sp = latest[53]  # R_SHOULDER_P_VAL
+    sr = latest[55]  # R_SHOULDER_R_VAL
+    ey = latest[57]  # R_ELBOW_Y_VAL
+    ep = latest[59]  # R_ELBOW_P_VAL
+
+    angles = ArmAngles(shoulder_p=sp, shoulder_r=sr, elbow_y=ey, elbow_p=ep)
+    fk = compute_right_arm_fk(angles, arm_params)
+
+    lines = [
+        "右手先位置 (waist frame):",
+        f"  X = {fk[0]*1000:.1f} mm ({fk[0]:.4f} m)",
+        f"  Y = {fk[1]*1000:.1f} mm ({fk[1]:.4f} m)",
+        f"  Z = {fk[2]*1000:.1f} mm ({fk[2]:.4f} m)",
+        "",
+        "関節角度:",
+        f"  肩P (idx53) = {sp:.2f}°",
+        f"  肩R (idx55) = {sr:.2f}°",
+        f"  肘Y (idx57) = {ey:.2f}°",
+        f"  肘P (idx59) = {ep:.2f}°",
+    ]
+    return "\n".join(lines), f"{fk[0]:.4f}", f"{fk[1]:.4f}", f"{fk[2]:.4f}"
+
+
+def arm_set_position(x_str, y_str, z_str):
+    """指定 XYZ [m] へ右手を近づける: IK で関節角を計算して送信"""
+    global data
+    try:
+        x, y, z = float(x_str), float(y_str), float(z_str)
+    except (ValueError, TypeError):
+        return "X, Y, Z の値を入力してください"
+
+    try:
+        arm_params = load_arm_params("linkparam.json")
+    except Exception as e:
+        return f"パラメータエラー: {e}"
+
+    target = np.array([x, y, z])
+    angles = compute_right_arm_ik(target, arm_params)
+
+    data[52] = TRQ_ON           # R_SHOULDER_P_CMD
+    data[53] = angles.shoulder_p
+    data[54] = TRQ_ON           # R_SHOULDER_R_CMD
+    data[55] = angles.shoulder_r
+    data[56] = TRQ_ON           # R_ELBOW_Y_CMD
+    data[57] = angles.elbow_y
+    data[58] = TRQ_ON           # R_ELBOW_P_CMD
+    data[59] = angles.elbow_p
+    transfer.set_data(REDIS_KEY_WRITE, data)
+
+    fk = compute_right_arm_fk(angles, arm_params)
+    err_mm = float(np.linalg.norm(fk - target)) * 1000
+
+    lines = [
+        "IK 計算結果:",
+        f"  肩P = {angles.shoulder_p:.2f}°",
+        f"  肩R = {angles.shoulder_r:.2f}°",
+        f"  肘Y = {angles.elbow_y:.2f}°",
+        f"  肘P = {angles.elbow_p:.2f}°",
+        "",
+        f"FK 検証 (誤差 {err_mm:.1f} mm):",
+        f"  X = {fk[0]*1000:.1f} mm",
+        f"  Y = {fk[1]*1000:.1f} mm",
+        f"  Z = {fk[2]*1000:.1f} mm",
+        "",
+        "送信完了",
+    ]
+    return "\n".join(lines)
+
 def main():
     """メイン関数 - コマンドライン引数を処理してGradioアプリを起動"""
     global receiver, transfer, walk_controller, WALKPARAM_FILE, params
@@ -912,6 +1010,19 @@ def main():
                     key_btn = gr.Button("一覧取得")
                     key_box = gr.Textbox(label="MeridimKeyParams", lines=30)
                     key_btn.click(fn=getmrdkey, inputs=[], outputs=key_box)
+
+                with gr.Tab("Arm"):
+                    gr.Markdown("### 右腕 IK 制御\n目標手先位置 [m] (waist frame) を入力して設定します。取得で現在の手先位置と関節角を読み込みます。")
+                    with gr.Row():
+                        arm_x = gr.Textbox(label="X [m]", placeholder="0.10")
+                        arm_y = gr.Textbox(label="Y [m]", placeholder="-0.10")
+                        arm_z = gr.Textbox(label="Z [m]", placeholder="0.065")
+                    with gr.Row():
+                        arm_get_btn = gr.Button("取得")
+                        arm_set_btn = gr.Button("設定")
+                    arm_result = gr.Textbox(label="結果", lines=12)
+                    arm_get_btn.click(fn=arm_get_state, inputs=[], outputs=[arm_result, arm_x, arm_y, arm_z])
+                    arm_set_btn.click(fn=arm_set_position, inputs=[arm_x, arm_y, arm_z], outputs=arm_result)
 
                 with gr.Tab("SysInfo"):
                     gr.Markdown("""### システム情報
