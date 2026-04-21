@@ -41,7 +41,10 @@
       "mcp__mcp-meridis__arm_get_state",
       "mcp__mcp-meridis__arm_set_position",
       "Bash(gh api *)",
-      "WebFetch(domain:api.github.com)"
+      "WebFetch(domain:api.github.com)",
+      "mcp__mcp-meridis__arm_prep_pose",
+      "Bash(python -c \"from mcp_meridis import *\")",
+      "Bash(python -c ' *)"
     ],
     "additionalDirectories": [
       "c:\\development\\Python\\mcp-meridis",

@@ -29,7 +29,15 @@ from dataclasses import dataclass, field
 import re
 from mrd_walk_ctrl import WalkController, WalkParams, LinkParams, load_walk_params, load_link_params, save_walk_params, save_link_params
 from mrd_info import MeridimKeyParams, get_key_index_text, get_system_info as _get_system_info
-from mrd_arm_ctrl import ArmAngles, load_arm_params, compute_right_arm_ik, compute_right_arm_fk
+from mrd_arm_ctrl import ArmAngles, ArmParams, load_arm_params, compute_right_arm_ik, compute_right_arm_fk
+
+_arm_params_cache: ArmParams | None = None
+
+def _get_arm_params() -> ArmParams:
+    global _arm_params_cache
+    if _arm_params_cache is None:
+        _arm_params_cache = load_arm_params("linkparam.json")
+    return _arm_params_cache
 
 # 20260103 安定版
 
@@ -822,7 +830,7 @@ def _read_latest_meridim():
 def arm_get_state():
     """右腕の現在状態を読み取り: 手先 XYZ (FK) と関節角度を返す"""
     try:
-        arm_params = load_arm_params("linkparam.json")
+        arm_params = _get_arm_params()
     except Exception as e:
         return f"パラメータエラー: {e}", ""
 
@@ -853,6 +861,40 @@ def arm_get_state():
     return "\n".join(lines), f"{fk[0]:.4f},{fk[1]:.4f},{fk[2]:.4f}"
 
 
+_ARM_SINGULARITY_THRESHOLD = 8.0  # 肘P がこの角度 [deg] 未満なら特異点付近とみなす
+
+# 特異点エスケープ用の準備ポーズ (肘を90°屈曲した安全姿勢)
+ARM_PREP_POSE = ArmAngles(
+    shoulder_p=0.0,
+    shoulder_r=-45.0,
+    elbow_y=0.0,
+    elbow_p=-90.0,
+)
+
+
+def _arm_send_angles(angles):
+    global data
+    for cmd_idx, angle in zip(
+        (52, 54, 56, 58),
+        (angles.shoulder_p, angles.shoulder_r, angles.elbow_y, angles.elbow_p),
+    ):
+        data[cmd_idx] = TRQ_ON
+        data[cmd_idx + 1] = angle
+    transfer.set_data(REDIS_KEY_WRITE, data)
+
+
+def arm_prep_pose():
+    """右腕を準備ポーズ (肘90°屈曲) へ移動する"""
+    _arm_send_angles(ARM_PREP_POSE)
+    return (
+        f"準備ポーズを送信:\n"
+        f"  肩P = {ARM_PREP_POSE.shoulder_p:.1f}°\n"
+        f"  肩R = {ARM_PREP_POSE.shoulder_r:.1f}°\n"
+        f"  肘Y = {ARM_PREP_POSE.elbow_y:.1f}°\n"
+        f"  肘P = {ARM_PREP_POSE.elbow_p:.1f}°"
+    )
+
+
 def arm_set_position(xyz_str):
     """指定 XYZ [m] へ右手を近づける: IK で関節角を計算して送信"""
     global data
@@ -863,27 +905,29 @@ def arm_set_position(xyz_str):
         return "x,y,z の形式で入力してください（例: 0.10,-0.10,0.065）"
 
     try:
-        arm_params = load_arm_params("linkparam.json")
+        arm_params = _get_arm_params()
     except Exception as e:
         return f"パラメータエラー: {e}"
 
     target = np.array([x, y, z])
-    angles = compute_right_arm_ik(target, arm_params)
 
-    data[52] = TRQ_ON           # R_SHOULDER_P_CMD
-    data[53] = angles.shoulder_p
-    data[54] = TRQ_ON           # R_SHOULDER_R_CMD
-    data[55] = angles.shoulder_r
-    data[56] = TRQ_ON           # R_ELBOW_Y_CMD
-    data[57] = angles.elbow_y
-    data[58] = TRQ_ON           # R_ELBOW_P_CMD
-    data[59] = angles.elbow_p
-    transfer.set_data(REDIS_KEY_WRITE, data)
+    # 特異点チェック: 現在の肘角度が閾値未満なら準備ポーズを先送信する
+    current_elbow_p = data[59]
+    escape_note = None
+    if abs(current_elbow_p) < _ARM_SINGULARITY_THRESHOLD:
+        _arm_send_angles(ARM_PREP_POSE)
+        escape_note = f"[特異点エスケープ] 肘P={current_elbow_p:.1f}° → 準備ポーズを先送信"
+
+    angles = compute_right_arm_ik(target, arm_params)
+    _arm_send_angles(angles)
 
     fk = compute_right_arm_fk(angles, arm_params)
     err_mm = float(np.linalg.norm(fk - target))
 
-    lines = [
+    lines = []
+    if escape_note:
+        lines.append(escape_note)
+    lines += [
         "IK 計算結果:",
         f"  肩P = {angles.shoulder_p:.2f}°",
         f"  肩R = {angles.shoulder_r:.2f}°",
@@ -1020,12 +1064,14 @@ def main():
                 with gr.Tab("Arm"):
                     gr.Markdown("### 右腕 IK 制御\n目標手先位置 [m] (waist frame) を x,y,z 形式で入力して設定します。取得で現在の手先位置と関節角を読み込みます。")
                     with gr.Row():
-                        arm_get_btn = gr.Button("取得")
-                        arm_set_btn = gr.Button("設定")
+                        arm_get_btn  = gr.Button("取得")
+                        arm_set_btn  = gr.Button("設定")
+                        arm_prep_btn = gr.Button("準備ポーズ", variant="secondary")
                     arm_xyz = gr.Textbox(label="右手 X,Y,Z [m]", placeholder="0.10,-0.10,0.065")
                     arm_result = gr.Textbox(label="結果", lines=12)
                     arm_get_btn.click(fn=arm_get_state, inputs=[], outputs=[arm_result, arm_xyz])
                     arm_set_btn.click(fn=arm_set_position, inputs=[arm_xyz], outputs=arm_result)
+                    arm_prep_btn.click(fn=arm_prep_pose, inputs=[], outputs=arm_result)
                     reset_btn.click(fn=system_reset, inputs=[], outputs=[result_out, arm_xyz])
 
                 with gr.Tab("SysInfo"):
