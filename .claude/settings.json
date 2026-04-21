@@ -23,7 +23,8 @@
       "Bash(cp \"c:/development/mcp-meridis/buf_input.csv\" \"c:/development/mcp-meridis/log/buf_input-real-gyro-independent.csv\")",
       "Bash(cp \"c:/development/mcp-meridis/buf_output.csv\" \"c:/development/mcp-meridis/log/buf_output-real-gyro-independent.csv\")",
       "Bash(python tools/plot_imu_compare_gyro_split.py)",
-      "mcp__mcp-meridis__get_initial_params_text"
+      "mcp__mcp-meridis__get_initial_params_text",
+      "Bash(python -)"
     ],
     "additionalDirectories": [
       "C:\\development\\Python\\mcp-meridis"

@@ -866,7 +866,7 @@ _ARM_SINGULARITY_THRESHOLD = 8.0  # 肘P がこの角度 [deg] 未満なら特�
 # 特異点エスケープ用の準備ポーズ (肘を90°屈曲した安全姿勢)
 ARM_PREP_POSE = ArmAngles(
     shoulder_p=0.0,
-    shoulder_r=-45.0,
+    shoulder_r=0.0,
     elbow_y=0.0,
     elbow_p=-90.0,
 )

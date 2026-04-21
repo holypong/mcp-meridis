@@ -92,6 +92,53 @@ def shoulder_pos_right(params: ArmParams) -> np.ndarray:
 # IK
 # ─────────────────────────────────────────────────────────
 
+def _ik_all_solutions(
+    p_eff: np.ndarray, L1: float, L2: float
+) -> list[tuple[float, float, float]]:
+    """
+    肩原点からの有効ベクトル p_eff に対して (sp, sr, ep) の全解を返す。
+
+    制約の導出:
+      u = R_y(sp)·R_x(sr)·(0,0,-1),  local_y = R_y(sp)·R_x(sr)·(0,1,0)
+      (1) u · p_eff = k              [上腕が正しい方向を向く]
+      (2) local_y · p_eff = 0        [前腕の掃引面が目標を含む]
+      ↓ 連立して解くと
+      A = px·sin(sp) + pz·cos(sp),  A² = k² - py²
+      sr = atan2(py, -A)
+      R_xz·sin(sp + atan2(pz,px)) = A  → sp の2解
+    """
+    px, py, pz = float(p_eff[0]), float(p_eff[1]), float(p_eff[2])
+    d_eff = float(np.linalg.norm(p_eff))
+    k = (d_eff**2 + L1**2 - L2**2) / (2.0 * L1)
+    A_sq = max(0.0, k**2 - py**2)
+    A0 = math.sqrt(A_sq)
+    R_xz = math.sqrt(px**2 + pz**2)
+    phi = math.atan2(pz, px) if R_xz > 1e-6 else 0.0
+
+    solutions = []
+    for A in (A0, -A0):
+        sr = math.atan2(py, -A) if abs(k) > 1e-6 else 0.0
+        sv = float(np.clip(A / R_xz, -1.0, 1.0)) if R_xz > 1e-6 else 0.0
+        b = math.asin(sv)
+        for sp_raw in (b - phi, math.pi - b - phi):
+            sp = math.atan2(math.sin(sp_raw), math.cos(sp_raw))
+            u = np.array([
+                -math.cos(sr) * math.sin(sp),
+                 math.sin(sr),
+                -math.cos(sr) * math.cos(sp),
+            ])
+            local_y = np.array([
+                 math.sin(sr) * math.sin(sp),
+                 math.cos(sr),
+                 math.sin(sr) * math.cos(sp),
+            ])
+            q = p_eff - L1 * u          # L2 × forearm_dir
+            v = np.cross(local_y, u)
+            ep = math.atan2(float(np.dot(q, v)), float(np.dot(q, u)))
+            solutions.append((sp, sr, ep))
+    return solutions
+
+
 def compute_right_arm_ik(
     target: np.ndarray,
     params: ArmParams,
@@ -106,8 +153,7 @@ def compute_right_arm_ik(
     target      : np.ndarray [x, y, z]  waist frame [m]
     params      : ArmParams
     elbow_y_deg : 肘ヨー固定値 [deg] (デフォルト 0)
-    elbow_out   : True = 肘を外向き(右方向、デフォルト)
-                  False = 肘を下向き
+    elbow_out   : 未使用 (将来の拡張用に保持)
 
     Returns
     -------
@@ -116,64 +162,33 @@ def compute_right_arm_ik(
     L1, L2 = params.L1, params.L2
     S = shoulder_pos_right(params)
 
-    # 肩から手先へのベクトル
     p = np.asarray(target, dtype=float) - S
     d = float(np.linalg.norm(p))
+    d_eff = float(np.clip(d, abs(L1 - L2) + 1e-4, L1 + L2 - 1e-4))
+    p_eff = p * (d_eff / d) if d > 1e-6 else np.array([0.0, 0.0, -d_eff])
 
-    # 到達可能範囲にクランプ
-    d_max = L1 + L2 - 1e-4
-    d_min = abs(L1 - L2) + 1e-4
-    d_eff = float(np.clip(d, d_min, d_max))
+    solutions = _ik_all_solutions(p_eff, L1, L2)
 
-    # ── 肘ピッチ (law of cosines) ────────────────────────────────────────
-    # 2リンク間の内角 β を求め、関節角 ep = β - π に変換
-    #   β = π (180°) → ep = 0  (伸展)
-    #   β < π       → ep < 0  (屈曲)
-    cos_beta = (L1**2 + L2**2 - d_eff**2) / (2.0 * L1 * L2)
-    beta = math.acos(float(np.clip(cos_beta, -1.0, 1.0)))
-    elbow_pitch_rad = beta - math.pi   # ≤ 0
+    # 可動域内の解を優先し、|sp|+|sr| が最小 (最も自然な姿勢) を選ぶ
+    def _score(sol: tuple[float, float, float]) -> tuple[int, float]:
+        sp_d = math.degrees(sol[0])
+        sr_d = math.degrees(sol[1])
+        ep_d = math.degrees(sol[2])
+        in_lim = (
+            ARM_LIMITS["shoulder_p"][0] <= sp_d <= ARM_LIMITS["shoulder_p"][1] and
+            ARM_LIMITS["shoulder_r"][0] <= sr_d <= ARM_LIMITS["shoulder_r"][1] and
+            ARM_LIMITS["elbow_p"][0]    <= ep_d <= ARM_LIMITS["elbow_p"][1]
+        )
+        return (0 if in_lim else 1, abs(sp_d) + abs(sr_d))
 
-    # ── 肩での角度 α (肩→手先ベクトルと上腕がなす角) ───────────────────
-    cos_alpha = (L1**2 + d_eff**2 - L2**2) / (2.0 * L1 * d_eff)
-    alpha = math.acos(float(np.clip(cos_alpha, -1.0, 1.0)))
+    sp, sr, ep = min(solutions, key=_score)
 
-    # 肩→手先の単位ベクトル
-    p_unit = p / d if d > 1e-6 else np.array([0.0, 0.0, -1.0])
-
-    # 肘優先方向
-    #   elbow_out=True  → 肘を右外側 (-Y 方向)
-    #   elbow_out=False → 肘を下側   (-Z 方向)
-    elbow_pref = np.array([0.0, -1.0, 0.0]) if elbow_out else np.array([0.0, 0.0, -1.0])
-
-    # p_unit × elbow_pref → 上腕を振る回転軸
-    rot_axis = np.cross(p_unit, elbow_pref)
-    rn = float(np.linalg.norm(rot_axis))
-    if rn < 1e-6:                          # p_unit と elbow_pref が平行な場合
-        rot_axis = np.cross(p_unit, np.array([1.0, 0.0, 0.0]))
-        rn = float(np.linalg.norm(rot_axis))
-    rot_axis = rot_axis / rn if rn > 1e-6 else np.array([1.0, 0.0, 0.0])
-
-    # 上腕方向 = p_unit を rot_axis まわりに ±α 回転
-    sign = 1.0 if elbow_out else -1.0
-    u = _rodrigues(p_unit, rot_axis, sign * alpha)
-
-    # ── 肩角度の逆算 ─────────────────────────────────────────────────────
-    # ゼロ姿勢 upper_arm_dir = (0, 0, -1) から各回転後:
-    #   upper_arm_dir = R_y(sp) · R_x(sr) · (0,0,-1)
-    #                 = (-cos(sr)·sin(sp),  sin(sr),  -cos(sr)·cos(sp))
-    # → sr = arcsin(uy)
-    # → sp = atan2(-ux, -uz)
-    ux, uy, uz = float(u[0]), float(u[1]), float(u[2])
-    shoulder_roll_rad  = math.asin(float(np.clip(uy, -1.0, 1.0)))
-    shoulder_pitch_rad = math.atan2(-ux, -uz)
-
-    angles = ArmAngles(
-        shoulder_p=math.degrees(shoulder_pitch_rad),
-        shoulder_r=math.degrees(shoulder_roll_rad),
+    return clamp_arm_angles(ArmAngles(
+        shoulder_p=math.degrees(sp),
+        shoulder_r=math.degrees(sr),
         elbow_y=elbow_y_deg,
-        elbow_p=math.degrees(elbow_pitch_rad),
-    )
-    return clamp_arm_angles(angles)
+        elbow_p=math.degrees(ep),
+    ))
 
 
 # ─────────────────────────────────────────────────────────
