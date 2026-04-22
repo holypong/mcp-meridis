@@ -9,7 +9,8 @@ mrd_arm_ctrl.py - ROID1 右腕 IK ライブラリ
 
 MJCF軸:
   r_shoulder_pitch  : Y軸回り (sp)  負=前に振る, 正=後に振る
-  r_arm_upper_roll  : X軸回り (sr)  負=外に上げる(右方向), 正=内側
+  r_arm_upper_roll  : X軸回り (sr)  正=外に上げる(右方向), 負=内側
+                     ※Meridimは左右ミラー実装のため物理角と符号が逆
   r_elbow_yaw       : Z軸回り (ey)  前腕の捻り
   r_arm_lower_pitch : Y軸回り (ep)  負=屈曲, 正=過伸展
 
@@ -50,7 +51,7 @@ class ArmAngles:
 # 関節可動域 [deg]
 ARM_LIMITS = {
     "shoulder_p": (-180.0, 180.0),
-    "shoulder_r": (-190.0,  10.0),
+    "shoulder_r": ( -10.0, 190.0),
     "elbow_y":    ( -90.0,  90.0),
     "elbow_p":    (-140.0,  30.0),
 }
@@ -170,9 +171,10 @@ def compute_right_arm_ik(
     solutions = _ik_all_solutions(p_eff, L1, L2)
 
     # 可動域内の解を優先し、|sp|+|sr| が最小 (最も自然な姿勢) を選ぶ
+    # sr_sol は物理角; Meridim右腕ロールは符号反転なので -sr_sol で判定
     def _score(sol: tuple[float, float, float]) -> tuple[int, float]:
         sp_d = math.degrees(sol[0])
-        sr_d = math.degrees(sol[1])
+        sr_d = -math.degrees(sol[1])   # 物理角 → Meridim角
         ep_d = math.degrees(sol[2])
         in_lim = (
             ARM_LIMITS["shoulder_p"][0] <= sp_d <= ARM_LIMITS["shoulder_p"][1] and
@@ -185,7 +187,7 @@ def compute_right_arm_ik(
 
     return clamp_arm_angles(ArmAngles(
         shoulder_p=math.degrees(sp),
-        shoulder_r=math.degrees(sr),
+        shoulder_r=-math.degrees(sr),  # 物理角 → Meridim角: 符号反転
         elbow_y=elbow_y_deg,
         elbow_p=math.degrees(ep),
     ))
@@ -201,11 +203,11 @@ def compute_right_arm_fk(angles: ArmAngles, params: ArmParams) -> np.ndarray:
     elbow_yaw は手先位置に影響しないため無視する
     """
     sp = math.radians(angles.shoulder_p)
-    sr = math.radians(angles.shoulder_r)
+    sr = -math.radians(angles.shoulder_r)  # Meridim右腕ロールは符号反転
     ep = math.radians(angles.elbow_p)
 
     # 上腕方向 (waist frame)
-    #   R_y(sp) · R_x(sr) · (0, 0, -1)
+    #   R_y(sp) · R_x(sr_phys) · (0, 0, -1)
     u = np.array([
         -math.cos(sr) * math.sin(sp),
          math.sin(sr),
