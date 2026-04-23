@@ -14,15 +14,15 @@
 | --- | --- | --- |
 | **①映像入力** | ロボットFPVカメラで赤玉の位置を認識 | merimujoco が MuJoCo offscreen renderer で FPVフレームをRedisに配信 |
 | **②言語指示** | 「赤玉に触れて」という自然言語コマンド | Claude Code → MCP ツール `set_vla_task()` → 英語タスク文字列を保持 |
-| **③腕制御** | SmolVLAが出力する関節角度をロボットに反映 | `set_arm_cmd()` MCP ツール経由で mcp-meridis の write ループに arm_override 適用 |
+| **③腕制御** | SmolVLAが出力する関節角度をロボットに反映 | `set_arm_cmd()` MCP ツール経由で meridis-mcp の write ループに arm_override 適用 |
 
 ### 前提：Claude Code + MCP 連携
 
-本システムは **Claude Code CLI** から mcp-meridis MCP サーバに接続して操作する。
+本システムは **Claude Code CLI** から meridis-mcp MCP サーバに接続して操作する。
 
 ```bash
 # Claude Code への MCP サーバ登録（初回のみ）
-claude mcp add --transport sse mcp-meridis <http://127.0.0.1:7860/gradio_api/mcp/sse>
+claude mcp add --transport sse meridis-mcp <http://127.0.0.1:7860/gradio_api/mcp/sse>
 ```
 
 登録後、Claude Code のチャットで `set_vla_task()` 等の MCP ツールが直接使用できる。
@@ -42,7 +42,7 @@ merimujoco (ml-test)
        │                        │
        └────────────┬───────────┘
                     ↓ read
-              mcp-meridis.py
+              meridis-mcp.py
               --redis redis-sim.json (read: meridis_sim_pub, write: meridis_ai_pub)
                     │ write: 全身関節指令（脚: IK歩行 + 腕: SmolVLA arm_override）
                     ↓
@@ -68,7 +68,7 @@ Claude Code チャット: 「赤玉に右手で触れて」
     ↓
 Claude Code (MCP クライアント)
     ↓ set_vla_task("Touch the red ball with your right hand")
-mcp-meridis.py  ←── vla_task 保持
+meridis-mcp.py  ←── vla_task 保持
     ↑                                    ↑
     │ GET /get_vla_task                   │ POST /set_arm_cmd
     │                                    │
@@ -85,7 +85,7 @@ mcp-meridis.py  ←── vla_task 保持
                                                   │
                                set_arm_cmd([sp,sr,ey,ep])
                                                   ↓
-                                        mcp-meridis writeループ
+                                        meridis-mcp writeループ
                                         arm_override 適用
                                                   ↓
                                         meridis_ai_pub
@@ -173,11 +173,11 @@ while viewer.is_running():
 python mrd_stream_viewer.py --redis redis-ai.json
 ```
 
-### Phase 2: mcp-meridis に VLA連携ツールを追加
+### Phase 2: meridis-mcp に VLA連携ツールを追加
 
-**リポジトリ**: `C:\\development\\mcp-meridis`
+**リポジトリ**: `C:\\development\\meridis-mcp`
 
-**変更ファイル**: `mcp-meridis.py`（約25行追加）
+**変更ファイル**: `meridis-mcp.py`（約25行追加）
 
 ```python
 # グローバル変数
@@ -218,10 +218,10 @@ if arm_override_enabled:
 
 ### Phase 3: vla_arm_bridge.py 作成 ✅ 実装済み
 
-**配置先**: `C:\\development\\meridis-vla\\vla_arm_bridge.py`
+**配置先**: `C:\\development\\vla-meridis\\vla_arm_bridge.py`
 
 > ⚠️ 以下は設計段階の旧プロトタイプコード。実装では通信方式を `requests` → `gradio_client.Client` に変更し、
-> `--mock` / `--stream-only` モードを追加済み。実際のコードは `meridis-vla/vla_arm_bridge.py` を参照。
+> `--mock` / `--stream-only` モードを追加済み。実際のコードは `vla-meridis/vla_arm_bridge.py` を参照。
 
 ```python
 # 【旧プロトタイプ・参考のみ】
@@ -234,7 +234,7 @@ if arm_override_enabled:
 
 ### Phase 4: デモデータ収集（ファインチューニング用）
 
-**配置先**: `C:\\development\\meridis-vla\\collect_arm_demo.py`
+**配置先**: `C:\\development\\vla-meridis\\collect_arm_demo.py`
 
 - merimujoco(ml-test)でリーダー実機をテレオペ（赤玉タッチ）
 - 記録: `meridis_frame_pub`(画像) + 右腕状態 + 右手先位置 + 接触フラグ
@@ -243,7 +243,7 @@ if arm_override_enabled:
 ### Phase 5: ファインチューニング
 
 ```bash
-cd C:\\development\\meridis-vla
+cd C:\\development\\vla-meridis
 lerobot-train \\
   --policy.path=lerobot/smolvla_base \\
   --dataset.repo_id=holypong/roid1_red_ball \\
@@ -260,32 +260,32 @@ lerobot-train \\
 | `redis-ai.json` | **新規** | merimujoco (ml-test) |
 | `merimujoco.py` | **変更** ✅ | merimujoco (ml-test) — `--stream` オプション追加、FPV offscreen レンダリングをメインスレッドで実行 |
 | `mrd_stream_viewer.py` | **新規** ✅ | merimujoco (ml-test) — Redis から `meridis_frame_pub` を受信してリアルタイム表示 |
-| `mcp-meridis.py` | **変更** ✅ | mcp-meridis — 3 MCPツール追加 + arm_override（約25行） |
-| `vla_arm_bridge.py` | **新規** ✅ | **meridis-vla**（本プロジェクト） |
-| `collect_arm_demo.py` | **新規** | **meridis-vla**（本プロジェクト） |
+| `meridis-mcp.py` | **変更** ✅ | meridis-mcp — 3 MCPツール追加 + arm_override（約25行） |
+| `vla_arm_bridge.py` | **新規** ✅ | **vla-meridis**（本プロジェクト） |
+| `collect_arm_demo.py` | **新規** | **vla-meridis**（本プロジェクト） |
 
 ---
 
 ## 起動手順（完成後）
 
 ```bash
-# ① mcp-meridis を Claude Code の MCP として登録（初回のみ）
-claude mcp add --transport sse mcp-meridis <http://127.0.0.1:7860/gradio_api/mcp/sse>
+# ① meridis-mcp を Claude Code の MCP として登録（初回のみ）
+claude mcp add --transport sse meridis-mcp <http://127.0.0.1:7860/gradio_api/mcp/sse>
 
 # ② Redis 初期化（merimujoco リポジトリ内で実行）
 cd C:\\path\\to\\merimujoco
 python create_meridis_keys.py
 
-# ③ mcp-meridis 起動（シミュ接続: meridis_sim_pub 読取・meridis_ai_pub 書込）
-cd C:\\development\\mcp-meridis
-python mcp-meridis.py --redis redis-sim.json
+# ③ meridis-mcp 起動（シミュ接続: meridis_sim_pub 読取・meridis_ai_pub 書込）
+cd C:\\development\\meridis-mcp
+python meridis-mcp.py --redis redis-sim.json
 
 # ④ merimujoco 起動（ml-testブランチ, meridis_ai_pub 読取・FPV配信あり）
 cd C:\\path\\to\\merimujoco
 python merimujoco.py --gethand true --view fpv --sphere 0.05,0.0,0.2 --redis redis-ai.json
 
 # ⑤ VLA ブリッジ起動（タスク待受け）
-cd C:\\development\\meridis-vla
+cd C:\\development\\vla-meridis
 python vla_arm_bridge.py
 ```
 
@@ -313,10 +313,10 @@ Claude Code → MCP: set_vla_task("Touch the red ball with your right hand")
 
 | コンポーネント | 環境 | 備考 |
 | --- | --- | --- |
-| Claude Code (MCP クライアント) | **Windows** | mcp-meridis を MCP サーバ登録 |
-| mcp-meridis | Windows | Gradio SSE :7860 |
+| Claude Code (MCP クライアント) | **Windows** | meridis-mcp を MCP サーバ登録 |
+| meridis-mcp | Windows | Gradio SSE :7860 |
 | merimujoco (ml-test) | Windows | redis-ai.json で meridis_ai_pub 読取 |
-| SmolVLA (vla_arm_bridge) | **Windows (CUDA GPU)** | meridis-vla プロジェクト |
+| SmolVLA (vla_arm_bridge) | **Windows (CUDA GPU)** | vla-meridis プロジェクト |
 | ml-mujoco (歩行AI学習) | WSL (参照のみ) | P9完了済み、今回は使用しない |
 
 ---
@@ -333,7 +333,7 @@ Claude Code → MCP: set_vla_task("Touch the red ball with your right hand")
 
 ---
 
-### Step 1: mcp-meridis.py に Phase 2 変数・関数を追加
+### Step 1: meridis-mcp.py に Phase 2 変数・関数を追加
 
 SPEC の「約25行」を実装する。
 
@@ -368,7 +368,7 @@ task = mcp.predict(api_name="/get_vla_task")
 mcp.predict(cmd_list, api_name="/set_arm_cmd")
 ```
 
-これにより型チェック・エラーハンドリングが整備された形で mcp-meridis と通信できる。
+これにより型チェック・エラーハンドリングが整備された形で meridis-mcp と通信できる。
 
 ---
 
@@ -413,8 +413,8 @@ Step 3 で mock 動作を確認してから統合する。
 
 ### Step 5: 配置先（確定）
 
-**`C:\development\meridis-vla\vla_arm_bridge.py`** に配置する。
-SmolVLA 推論環境（Python 3.11 + lerobot）を mcp-meridis と分離して管理する。
+**`C:\development\vla-meridis\vla_arm_bridge.py`** に配置する。
+SmolVLA 推論環境（Python 3.11 + lerobot）を meridis-mcp と分離して管理する。
 
 ---
 
@@ -422,8 +422,8 @@ SmolVLA 推論環境（Python 3.11 + lerobot）を mcp-meridis と分離して�
 
 | # | 作業 | ファイル | 依存 |
 |---|------|---------|------|
-| 1 | グローバル変数・3関数追加 + arm_override 適用 | `mcp-meridis.py` | なし |
-| 2 | Gradio API 公開確認（`/get_vla_task` 等） | `mcp-meridis.py` | Step 1 |
+| 1 | グローバル変数・3関数追加 + arm_override 適用 | `meridis-mcp.py` | なし |
+| 2 | Gradio API 公開確認（`/get_vla_task` 等） | `meridis-mcp.py` | Step 1 |
 | 3 | 骨格作成（mock モード付き） | `vla_arm_bridge.py` | Step 2 |
 | 4 | FPV フレーム受信確認（mrd_stream_viewer 流用） | `vla_arm_bridge.py` | Redis / merimujoco 起動 |
 | 5 | SmolVLA 統合 | `vla_arm_bridge.py` | CUDA 環境・lerobot |
@@ -432,9 +432,9 @@ SmolVLA 推論環境（Python 3.11 + lerobot）を mcp-meridis と分離して�
 
 ## 確定事項
 
-1. **`vla_arm_bridge.py` の配置先**: `C:\development\meridis-vla\` ✅
+1. **`vla_arm_bridge.py` の配置先**: `C:\development\vla-meridis\` ✅
 2. **FPV フレーム Redis キー名**: `meridis_frame_pub` ✅
-3. **実施順序**: Step 1（mcp-meridis.py）→ vla_arm_bridge.py の順に実施 ✅
+3. **実施順序**: Step 1（meridis-mcp.py）→ vla_arm_bridge.py の順に実施 ✅
 
 ---
 
@@ -452,7 +452,7 @@ python vla_arm_bridge.py --redis redis-sim.json --mock
 | チェック項目 | 結果 |
 |---|---|
 | Redis 接続（127.0.0.1:6379） | ✅ OK |
-| mcp-meridis Gradio 接続（127.0.0.1:7860） | ✅ OK |
+| meridis-mcp Gradio 接続（127.0.0.1:7860） | ✅ OK |
 | `get_vla_task()` API ポーリング | ✅ OK（空タスク時は待機メッセージ1回のみ） |
 | タスク設定後の検出 | ✅ OK（`'Touch the red ball'` を正しく受信） |
 | `set_arm_cmd()` mock 送信（10 steps） | ✅ OK（エラーなし） |
@@ -460,7 +460,7 @@ python vla_arm_bridge.py --redis redis-sim.json --mock
 **確認ログ（抜粋）**:
 ```
 [INFO] Redis に接続しました: 127.0.0.1:6379
-[INFO] mcp-meridis に接続しました: http://127.0.0.1:7860
+[INFO] meridis-mcp に接続しました: http://127.0.0.1:7860
 [INFO] タスク未設定。set_vla_task() でタスクを入力してください。
 [MOCK] task='Touch the red ball'  ダミーアクション送信 (10 steps)
 ```
@@ -525,8 +525,8 @@ lerobot は Python 3.13 未対応のため、`py` ランチャーで 3.11 を指
 # Python 3.11 のインストール確認（未導入なら https://www.python.org/ からインストール）
 py -3.11 --version
 
-# meridis-vla プロジェクト内に .venv311 として作成
-cd C:\development\meridis-vla
+# vla-meridis プロジェクト内に .venv311 として作成
+cd C:\development\vla-meridis
 py -3.11 -m venv .venv311
 
 # 仮想環境を有効化
@@ -585,8 +585,8 @@ print('Model loaded OK')
 
 ```bash
 # .venv311 を有効化した状態で
-cd C:\development\meridis-vla
-python vla_arm_bridge.py --redis ..\mcp-meridis\redis-sim.json
+cd C:\development\vla-meridis
+python vla_arm_bridge.py --redis ..\meridis-mcp\redis-sim.json
 # （--mock / --stream-only なし = SmolVLA フル推論モード）
 ```
 
