@@ -38,7 +38,7 @@ merimujoco (ml-test)
   --redis redis-ai.json  ← 要作成（read: meridis_ai_pub, write: meridis_sim_pub）
        │ write: 状態・手先位置・FPVフレーム
        ↓
-  meridis_sim_pub          meridis_fpv_frame(新規)
+  meridis_sim_pub          meridis_frame_pub(新規)
        │                        │
        └────────────┬───────────┘
                     ↓ read
@@ -216,69 +216,20 @@ if arm_override_enabled:
     data[58] = arm_override[3]  # R_ELBOW_P_CMD
 ```
 
-### Phase 3: vla_arm_bridge.py 作成
+### Phase 3: vla_arm_bridge.py 作成 ✅ 実装済み
 
-**配置先**: `C:\\development\\meridis-vla\\vla_arm_bridge.py`（本プロジェクト）
+**配置先**: `C:\\development\\meridis-vla\\vla_arm_bridge.py`
+
+> ⚠️ 以下は設計段階の旧プロトタイプコード。実装では通信方式を `requests` → `gradio_client.Client` に変更し、
+> `--mock` / `--stream-only` モードを追加済み。実際のコードは `meridis-vla/vla_arm_bridge.py` を参照。
 
 ```python
-"""SmolVLA 右腕制御ブリッジ
-映像: Redis(meridis_fpv_frame) から FPVフレームを取得
-言語: mcp-meridis get_vla_task() でタスク取得
-腕制御: SmolVLA → set_arm_cmd() → mcp-meridis arm_override
-"""
-import redis, torch, requests, time, base64, numpy as np
-from io import BytesIO
-from PIL import Image
-from lerobot.common.policies.smolvla.modeling_smolvla import SmolVLAPolicy
-
-MCP = "<http://127.0.0.1:7860/gradio_api/mcp>"
-R_ARM_IDX  = [52, 54, 56, 58]
-R_HAND_IDX = [74, 75, 76]
-CHUNK_SIZE = 10
-
-r = redis.Redis("127.0.0.1", 6379)
-policy = SmolVLAPolicy.from_pretrained("lerobot/smolvla_base").to("cuda").eval()
-
-def get_fpv_frame():
-    raw = r.get("meridis_fpv_frame")
-    if raw is None:
-        return None
-    img = Image.open(BytesIO(base64.b64decode(raw))).convert("RGB").resize((320, 240))
-    arr = np.array(img, dtype=np.float32) / 255.0
-    return torch.from_numpy(arr).permute(2, 0, 1)  # [3,H,W]
-
-def get_task():
-    return requests.get(f"{MCP}/get_vla_task").json().get("result", "")
-
-def set_arm(cmd):
-    requests.post(f"{MCP}/set_arm_cmd", json={"values": cmd})
-
-print("VLA bridge ready. Waiting for set_vla_task() from Claude Code chat.")
-while True:
-    task = get_task()
-    if not task:
-        time.sleep(0.1); continue
-
-    frame = get_fpv_frame()
-    if frame is None:
-        time.sleep(0.05); continue
-
-    sim = r.hgetall("meridis_sim_pub")
-    arm_s = [float(sim.get(str(i), b"0")) for i in R_ARM_IDX]
-    hand  = [float(sim.get(str(i), b"0")) for i in R_HAND_IDX]
-    state = torch.tensor(arm_s + hand, dtype=torch.float32)
-
-    obs = {
-        "observation.images.fpv": frame.unsqueeze(0).cuda(),
-        "observation.state":      state.unsqueeze(0).cuda(),
-        "task":                   [task],
-    }
-    with torch.inference_mode():
-        actions = policy.select_action(obs)  # [1, 50, 4]
-
-    for step in range(CHUNK_SIZE):
-        set_arm(actions[0, step].cpu().tolist())
-        time.sleep(0.01)  # 100Hz
+# 【旧プロトタイプ・参考のみ】
+# 実装上の変更点:
+#   - requests → gradio_client.Client に変更（Step 2 で確定）
+#   - Redis FPVキー: meridis_fpv_frame → meridis_frame_pub（確定値）
+#   - 腕状態インデックス: CMD[52,54,56,58] → VAL[53,55,57,59]（フィードバック値）
+#   - --mock / --stream-only モード追加
 ```
 
 ### Phase 4: デモデータ収集（ファインチューニング用）
@@ -286,7 +237,7 @@ while True:
 **配置先**: `C:\\development\\meridis-vla\\collect_arm_demo.py`
 
 - merimujoco(ml-test)でリーダー実機をテレオペ（赤玉タッチ）
-- 記録: `meridis_fpv_frame`(画像) + 右腕状態 + 右手先位置 + 接触フラグ
+- 記録: `meridis_frame_pub`(画像) + 右腕状態 + 右手先位置 + 接触フラグ
 - LeRobot Parquet + MP4 形式で `log/roid1_red_ball/` に保存
 
 ### Phase 5: ファインチューニング
@@ -309,8 +260,8 @@ lerobot-train \\
 | `redis-ai.json` | **新規** | merimujoco (ml-test) |
 | `merimujoco.py` | **変更** ✅ | merimujoco (ml-test) — `--stream` オプション追加、FPV offscreen レンダリングをメインスレッドで実行 |
 | `mrd_stream_viewer.py` | **新規** ✅ | merimujoco (ml-test) — Redis から `meridis_frame_pub` を受信してリアルタイム表示 |
-| `mcp-meridis.py` | **変更** | mcp-meridis — 3 MCPツール追加 + arm_override（約25行） |
-| `vla_arm_bridge.py` | **新規** | **meridis-vla**（本プロジェクト） |
+| `mcp-meridis.py` | **変更** ✅ | mcp-meridis — 3 MCPツール追加 + arm_override（約25行） |
+| `vla_arm_bridge.py` | **新規** ✅ | **meridis-vla**（本プロジェクト） |
 | `collect_arm_demo.py` | **新規** | **meridis-vla**（本プロジェクト） |
 
 ---
@@ -350,7 +301,7 @@ Claude Code → MCP: set_vla_task("Touch the red ball with your right hand")
 
 ## 検証方法
 
-1. `meridis_fpv_frame` が Redis に書き込まれていることを確認:`python -c "import redis,base64; r=redis.Redis(); print(len(r.get('meridis_fpv_frame')), 'bytes')"`
+1. `meridis_frame_pub` が Redis に書き込まれていることを確認:`python -c "import redis,base64; r=redis.Redis(); print(len(r.get('meridis_frame_pub')), 'bytes')"`
 2. Claude Code チャットで `set_vla_task("Touch the red ball")` を実行
 3. `redis_plotter2.py --display joint --redis-key meridis_ai_pub` で右腕CMD(52,54,56,58)の変化を確認
 4. merimujoco FPV ビューで右手が赤玉に向かう動きを目視確認
@@ -574,8 +525,8 @@ lerobot は Python 3.13 未対応のため、`py` ランチャーで 3.11 を指
 # Python 3.11 のインストール確認（未導入なら https://www.python.org/ からインストール）
 py -3.11 --version
 
-# mcp-meridis プロジェクト内に .venv311 として作成
-cd C:\development\mcp-meridis
+# meridis-vla プロジェクト内に .venv311 として作成
+cd C:\development\meridis-vla
 py -3.11 -m venv .venv311
 
 # 仮想環境を有効化
@@ -634,8 +585,8 @@ print('Model loaded OK')
 
 ```bash
 # .venv311 を有効化した状態で
-cd C:\development\mcp-meridis
-python vla_arm_bridge.py --redis redis-sim.json
+cd C:\development\meridis-vla
+python vla_arm_bridge.py --redis ..\mcp-meridis\redis-sim.json
 # （--mock / --stream-only なし = SmolVLA フル推論モード）
 ```
 
