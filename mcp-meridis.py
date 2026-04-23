@@ -29,7 +29,11 @@ from dataclasses import dataclass, field
 import re
 from mrd_walk_ctrl import WalkController, WalkParams, LinkParams, load_walk_params, load_link_params, save_walk_params, save_link_params
 from mrd_info import MeridimKeyParams, get_key_index_text, get_system_info as _get_system_info
-from mrd_arm_ctrl import ArmAngles, ArmParams, load_arm_params, compute_right_arm_ik, compute_right_arm_fk
+from mrd_arm_ctrl import (
+    ArmAngles, ArmParams, load_arm_params,
+    compute_right_arm_ik, compute_right_arm_fk,
+    compute_left_arm_ik, compute_left_arm_fk,
+)
 
 _arm_params_cache: ArmParams | None = None
 
@@ -110,6 +114,11 @@ background_thread = None
 stop_background = False
 
 TRQ_ON = 1.0            # サーボパワー 0:OFF, 1:ON
+
+# VLA 腕制御オーバーライド
+arm_override: list = [0.0, 0.0, 0.0, 0.0]
+arm_override_enabled: bool = False
+vla_task: str = ""
 
 
 # MeridimKeyParamsのインデックスと説明を表示する関数
@@ -299,7 +308,15 @@ def background_motion_control():
             buf_output = walk_controller.buf_output
             buf_input = walk_controller.buf_input
             buf_index = walk_controller.buf_index
-            
+
+            # VLA arm override（歩行中も SmolVLA で右腕を制御）
+            if arm_override_enabled:
+                data[52] = arm_override[0]
+                data[54] = arm_override[1]
+                data[56] = arm_override[2]
+                data[58] = arm_override[3]
+                transfer.set_data(REDIS_KEY_WRITE, data)
+
             # 安全停止要求チェック (B2修正): その場足踏み経由でサイクル完了時に停止
             if walk_controller.stop_requested:
                 can_stop = False
@@ -469,13 +486,17 @@ def system_reset():
     transfer.set_data(REDIS_KEY_WRITE, data)
     time.sleep(0.01)  # 少し待ってから元に戻す
     data[0] = 0.0  # 送信後は元に戻す
-    # 右腕IKを解除: 関節角を0にリセット
+    # 両腕IKを解除: 関節角を0にリセット
     data[53] = 0.0  # R_SHOULDER_P
     data[55] = 0.0  # R_SHOULDER_R
     data[57] = 0.0  # R_ELBOW_Y
     data[59] = 0.0  # R_ELBOW_P
+    data[23] = 0.0  # L_SHOULDER_P
+    data[25] = 0.0  # L_SHOULDER_R
+    data[27] = 0.0  # L_ELBOW_Y
+    data[29] = 0.0  # L_ELBOW_P
     transfer.set_data(REDIS_KEY_WRITE, data)
-    return "リセット信号（data[0]=5556）を1回送信しました。右腕IKを解除しました。", ""
+    return "リセット信号（data[0]=5556）を1回送信しました。両腕IKを解除しました。", "", ""
 
 def robot_status():
     """ロボット状態確認（IMU情報含む）"""
@@ -828,37 +849,50 @@ def _read_latest_meridim():
 
 
 def arm_get_state():
-    """右腕の現在状態を読み取り: 手先 XYZ (FK) と関節角度を返す"""
+    """両腕の現在状態を読み取り: 手先 XYZ (FK) と関節角度を返す"""
     try:
         arm_params = _get_arm_params()
     except Exception as e:
-        return f"パラメータエラー: {e}", ""
+        return f"パラメータエラー: {e}", "", "", ""
 
     latest = _read_latest_meridim()
     if latest is None:
-        return "データなし (Redis 未接続 or バッファ空)", ""
+        return "データなし (Redis 未接続 or バッファ空)", "", "", ""
 
-    sp = latest[53]  # R_SHOULDER_P_VAL
-    sr = latest[55]  # R_SHOULDER_R_VAL
-    ey = latest[57]  # R_ELBOW_Y_VAL
-    ep = latest[59]  # R_ELBOW_P_VAL
+    r_sp = latest[53]  # R_SHOULDER_P_VAL
+    r_sr = latest[55]  # R_SHOULDER_R_VAL
+    r_ey = latest[57]  # R_ELBOW_Y_VAL
+    r_ep = latest[59]  # R_ELBOW_P_VAL
+    r_angles = ArmAngles(shoulder_p=r_sp, shoulder_r=r_sr, elbow_y=r_ey, elbow_p=r_ep)
+    r_fk = compute_right_arm_fk(r_angles, arm_params)
 
-    angles = ArmAngles(shoulder_p=sp, shoulder_r=sr, elbow_y=ey, elbow_p=ep)
-    fk = compute_right_arm_fk(angles, arm_params)
+    l_sp = latest[23]  # L_SHOULDER_P_VAL
+    l_sr = latest[25]  # L_SHOULDER_R_VAL
+    l_ey = latest[27]  # L_ELBOW_Y_VAL
+    l_ep = latest[29]  # L_ELBOW_P_VAL
+    l_angles = ArmAngles(shoulder_p=l_sp, shoulder_r=l_sr, elbow_y=l_ey, elbow_p=l_ep)
+    l_fk = compute_left_arm_fk(l_angles, arm_params)
 
-    lines = [
-        #"右手先位置 (from waist):",
-        #f"  X = {fk[0]:.4f} m",
-        #f"  Y = {fk[1]:.4f} m",
-        #f"  Z = {fk[2]:.4f} m",
-        #"",
+    r_lines = [
         "右腕 関節角度:",
-        f"  ID53:肩P = {sp:.2f}°",
-        f"  ID55:肩R = {sr:.2f}°",
-        f"  ID57:肘Y = {ey:.2f}°",
-        f"  ID59:肘P = {ep:.2f}°",
+        f"  ID53:肩P = {r_sp:.2f}°",
+        f"  ID55:肩R = {r_sr:.2f}°",
+        f"  ID57:肘Y = {r_ey:.2f}°",
+        f"  ID59:肘P = {r_ep:.2f}°",
     ]
-    return "\n".join(lines), f"{fk[0]:.4f},{fk[1]:.4f},{fk[2]:.4f}"
+    l_lines = [
+        "左腕 関節角度:",
+        f"  ID23:肩P = {l_sp:.2f}°",
+        f"  ID25:肩R = {l_sr:.2f}°",
+        f"  ID27:肘Y = {l_ey:.2f}°",
+        f"  ID29:肘P = {l_ep:.2f}°",
+    ]
+    return (
+        "\n".join(r_lines),
+        "\n".join(l_lines),
+        f"{r_fk[0]:.4f},{r_fk[1]:.4f},{r_fk[2]:.4f}",
+        f"{l_fk[0]:.4f},{l_fk[1]:.4f},{l_fk[2]:.4f}",
+    )
 
 
 _ARM_SINGULARITY_THRESHOLD = 8.0  # 肘P がこの角度 [deg] 未満なら特異点付近とみなす
@@ -883,15 +917,46 @@ def _arm_send_angles(angles):
     transfer.set_data(REDIS_KEY_WRITE, data)
 
 
+def _left_arm_send_angles(angles):
+    global data
+    for cmd_idx, angle in zip(
+        (22, 24, 26, 28),
+        (angles.shoulder_p, angles.shoulder_r, angles.elbow_y, angles.elbow_p),
+    ):
+        data[cmd_idx] = TRQ_ON
+        data[cmd_idx + 1] = angle
+    transfer.set_data(REDIS_KEY_WRITE, data)
+
+
+LEFT_ARM_PREP_POSE = ArmAngles(
+    shoulder_p=0.0,
+    shoulder_r=0.0,
+    elbow_y=0.0,
+    elbow_p=-90.0,
+)
+
+
 def arm_prep_pose():
     """右腕を準備ポーズ (肘90°屈曲) へ移動する"""
     _arm_send_angles(ARM_PREP_POSE)
     return (
-        f"準備ポーズを送信:\n"
+        f"右腕 準備ポーズを送信:\n"
         f"  肩P = {ARM_PREP_POSE.shoulder_p:.1f}°\n"
         f"  肩R = {ARM_PREP_POSE.shoulder_r:.1f}°\n"
         f"  肘Y = {ARM_PREP_POSE.elbow_y:.1f}°\n"
         f"  肘P = {ARM_PREP_POSE.elbow_p:.1f}°"
+    )
+
+
+def left_arm_prep_pose():
+    """左腕を準備ポーズ (肘90°屈曲) へ移動する"""
+    _left_arm_send_angles(LEFT_ARM_PREP_POSE)
+    return (
+        f"左腕 準備ポーズを送信:\n"
+        f"  肩P = {LEFT_ARM_PREP_POSE.shoulder_p:.1f}°\n"
+        f"  肩R = {LEFT_ARM_PREP_POSE.shoulder_r:.1f}°\n"
+        f"  肘Y = {LEFT_ARM_PREP_POSE.elbow_y:.1f}°\n"
+        f"  肘P = {LEFT_ARM_PREP_POSE.elbow_p:.1f}°"
     )
 
 
@@ -942,6 +1007,103 @@ def arm_set_position(xyz_str):
         "送信完了",
     ]
     return "\n".join(lines)
+
+
+def left_arm_set_position(xyz_str):
+    """指定 XYZ [m] へ左手を近づける: IK で関節角を計算して送信"""
+    global data
+    try:
+        parts = [s.strip() for s in xyz_str.split(",")]
+        x, y, z = float(parts[0]), float(parts[1]), float(parts[2])
+    except (ValueError, TypeError, IndexError):
+        return "x,y,z の形式で入力してください（例: 0.10,0.10,0.065）"
+
+    try:
+        arm_params = _get_arm_params()
+    except Exception as e:
+        return f"パラメータエラー: {e}"
+
+    target = np.array([x, y, z])
+
+    current_elbow_p = data[29]  # L_ELBOW_P_VAL
+    escape_note = None
+    if abs(current_elbow_p) < _ARM_SINGULARITY_THRESHOLD:
+        _left_arm_send_angles(LEFT_ARM_PREP_POSE)
+        escape_note = f"[特異点エスケープ] 肘P={current_elbow_p:.1f}° → 準備ポーズを先送信"
+
+    angles = compute_left_arm_ik(target, arm_params)
+    _left_arm_send_angles(angles)
+
+    fk = compute_left_arm_fk(angles, arm_params)
+    err_mm = float(np.linalg.norm(fk - target))
+
+    lines = []
+    if escape_note:
+        lines.append(escape_note)
+    lines += [
+        "IK 計算結果 (左腕):",
+        f"  肩P = {angles.shoulder_p:.2f}°",
+        f"  肩R = {angles.shoulder_r:.2f}°",
+        f"  肘Y = {angles.elbow_y:.2f}°",
+        f"  肘P = {angles.elbow_p:.2f}°",
+        "",
+        f"FK 検証 (誤差 {err_mm:.4f} m):",
+        f"  X = {fk[0]:.4f} m",
+        f"  Y = {fk[1]:.4f} m",
+        f"  Z = {fk[2]:.4f} m",
+        "",
+        "送信完了",
+    ]
+    return "\n".join(lines)
+
+
+# ─────────────────────────────────────────────────────────
+# VLA 連携ツール
+# ─────────────────────────────────────────────────────────
+
+def set_vla_task(task: str) -> str:
+    """VLA 言語タスクを設定する（Claude Code チャットまたは vla_arm_bridge から呼び出す）
+    例: "Touch the red ball with your right hand"
+    """
+    global vla_task
+    vla_task = task
+    return f"VLA task set: {task}"
+
+
+def get_vla_task() -> str:
+    """現在の VLA タスク文字列を返す（vla_arm_bridge がポーリング）"""
+    return vla_task
+
+
+def set_arm_cmd(values_str: str) -> str:
+    """右腕コマンドを上書きする [肩P, 肩R, 肘Y, 肘P] (deg), JSON 配列形式。
+    空配列 [] で override を無効化。
+    例: "[0.0, 0.0, -90.0, 0.0]"
+    """
+    global arm_override, arm_override_enabled, data
+    try:
+        vals = json.loads(values_str)
+    except (json.JSONDecodeError, TypeError):
+        return "エラー: JSON 配列形式で入力してください (例: [0, 0, -90, 0])"
+
+    if isinstance(vals, list) and len(vals) == 4:
+        arm_override = [float(v) for v in vals]
+        arm_override_enabled = True
+    elif isinstance(vals, list) and len(vals) == 0:
+        arm_override_enabled = False
+    else:
+        return "エラー: 4 要素のリスト、または空リスト [] で無効化してください"
+
+    if arm_override_enabled:
+        data[52] = arm_override[0]
+        data[54] = arm_override[1]
+        data[56] = arm_override[2]
+        data[58] = arm_override[3]
+        if transfer:
+            transfer.set_data(REDIS_KEY_WRITE, data)
+
+    return f"arm_cmd={'on' if arm_override_enabled else 'off'}: {arm_override}"
+
 
 def main():
     """メイン関数 - コマンドライン引数を処理してGradioアプリを起動"""
@@ -1062,17 +1224,29 @@ def main():
                     key_btn.click(fn=getmrdkey, inputs=[], outputs=key_box)
 
                 with gr.Tab("Arm"):
-                    gr.Markdown("### 右腕 IK 制御\n目標手先位置 [m] (waist frame) を x,y,z 形式で入力して設定します。取得で現在の手先位置と関節角を読み込みます。")
+                    gr.Markdown("### 腕 IK 制御\n目標手先位置 [m] (waist frame) を x,y,z 形式で入力して設定します。取得で両腕の手先位置と関節角を読み込みます。")
+                    arm_get_btn = gr.Button("取得")
                     with gr.Row():
-                        arm_get_btn  = gr.Button("取得")
-                        arm_set_btn  = gr.Button("設定")
-                        arm_prep_btn = gr.Button("準備ポーズ", variant="secondary")
-                    arm_xyz = gr.Textbox(label="右手 X,Y,Z [m]", placeholder="0.10,-0.10,0.065")
-                    arm_result = gr.Textbox(label="結果", lines=12)
-                    arm_get_btn.click(fn=arm_get_state, inputs=[], outputs=[arm_result, arm_xyz])
-                    arm_set_btn.click(fn=arm_set_position, inputs=[arm_xyz], outputs=arm_result)
-                    arm_prep_btn.click(fn=arm_prep_pose, inputs=[], outputs=arm_result)
-                    reset_btn.click(fn=system_reset, inputs=[], outputs=[result_out, arm_xyz])
+                        with gr.Column():
+                            gr.Markdown("#### 右腕")
+                            with gr.Row():
+                                arm_set_btn  = gr.Button("設定")
+                                arm_prep_btn = gr.Button("準備ポーズ", variant="secondary")
+                            r_arm_xyz = gr.Textbox(label="右手 X,Y,Z [m]（waist frame）", placeholder="0.10,-0.10,0.065")
+                            r_arm_result = gr.Textbox(label="結果（右腕）", lines=8)
+                        with gr.Column():
+                            gr.Markdown("#### 左腕")
+                            with gr.Row():
+                                l_arm_set_btn  = gr.Button("設定")
+                                l_arm_prep_btn = gr.Button("準備ポーズ", variant="secondary")
+                            l_arm_xyz = gr.Textbox(label="左手 X,Y,Z [m]（waist frame）", placeholder="0.10,0.10,0.065")
+                            l_arm_result = gr.Textbox(label="結果（左腕）", lines=8)
+                    arm_get_btn.click(fn=arm_get_state, inputs=[], outputs=[r_arm_result, l_arm_result, r_arm_xyz, l_arm_xyz])
+                    arm_set_btn.click(fn=arm_set_position, inputs=[r_arm_xyz], outputs=r_arm_result)
+                    arm_prep_btn.click(fn=arm_prep_pose, inputs=[], outputs=r_arm_result)
+                    l_arm_set_btn.click(fn=left_arm_set_position, inputs=[l_arm_xyz], outputs=l_arm_result)
+                    l_arm_prep_btn.click(fn=left_arm_prep_pose, inputs=[], outputs=l_arm_result)
+                    reset_btn.click(fn=system_reset, inputs=[], outputs=[result_out, r_arm_xyz, l_arm_xyz])
 
                 with gr.Tab("SysInfo"):
                     gr.Markdown("""### システム情報
@@ -1081,6 +1255,24 @@ AIエージェントはこの情報を使ってシステムを理解します。
                     sysinfo_btn = gr.Button("情報取得")
                     sysinfo_box = gr.Textbox(label="System Info", lines=50)
                     sysinfo_btn.click(fn=get_system_info, inputs=[], outputs=sysinfo_box)
+
+                with gr.Tab("VLA"):
+                    gr.Markdown("### VLA 右腕制御\n`vla_arm_bridge.py` 連携ツール。タスク設定と右腕コマンド上書きを管理します。")
+                    with gr.Row():
+                        vla_task_in = gr.Textbox(label="タスク文字列", placeholder="Touch the red ball with your right hand", scale=3)
+                        vla_set_btn = gr.Button("タスク設定")
+                        vla_get_btn = gr.Button("タスク取得")
+                    vla_task_box = gr.Textbox(label="現在のタスク", lines=2)
+                    gr.Markdown("---")
+                    with gr.Row():
+                        arm_cmd_in  = gr.Textbox(label="腕コマンド JSON [肩P, 肩R, 肘Y, 肘P] deg", placeholder="[0.0, 0.0, -90.0, 0.0]", scale=3)
+                        arm_cmd_btn = gr.Button("送信")
+                        arm_off_btn = gr.Button("Override OFF", variant="secondary")
+                    arm_cmd_box = gr.Textbox(label="結果", lines=2)
+                    vla_set_btn.click(fn=set_vla_task, inputs=vla_task_in, outputs=vla_task_box, api_name="set_vla_task")
+                    vla_get_btn.click(fn=get_vla_task, inputs=[], outputs=vla_task_box, api_name="get_vla_task")
+                    arm_cmd_btn.click(fn=set_arm_cmd, inputs=arm_cmd_in, outputs=arm_cmd_box, api_name="set_arm_cmd")
+                    arm_off_btn.click(fn=lambda: set_arm_cmd("[]"), inputs=[], outputs=arm_cmd_box)
 
             # タブを開くタイミングでドロップダウンを現在のキーで更新
             redis_tab.select(fn=lambda: gr.update(value=REDIS_KEY_READ), outputs=redis_key_dropdown)

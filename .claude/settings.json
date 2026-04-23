@@ -24,7 +24,9 @@
       "Bash(cp \"c:/development/mcp-meridis/buf_output.csv\" \"c:/development/mcp-meridis/log/buf_output-real-gyro-independent.csv\")",
       "Bash(python tools/plot_imu_compare_gyro_split.py)",
       "mcp__mcp-meridis__get_initial_params_text",
-      "Bash(python -)"
+      "Bash(python -)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('mcp-meridis.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('vla_arm_bridge.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")"
     ],
     "additionalDirectories": [
       "C:\\development\\Python\\mcp-meridis"

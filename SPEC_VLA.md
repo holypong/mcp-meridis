@@ -370,4 +370,152 @@ Claude Code → MCP: set_vla_task("Touch the red ball with your right hand")
 
 ---
 
-##
+## 実装ステップ計画（Claude Code 提案）
+
+### 参照ファイル
+
+`mrd_stream_viewer.py`（`C:\development\merimujoco\`）から以下のパターンを流用する:
+
+- `load_redis_config()` + argparse 構造
+- フレームデコード（JSON `{"count":..., "frame":"<base64>"}` への対応）
+- Redis 接続・ping チェック、graceful shutdown
+
+---
+
+### Step 1: mcp-meridis.py に Phase 2 変数・関数を追加
+
+SPEC の「約25行」を実装する。
+
+```python
+# グローバル変数（既存変数定義の近くに追加）
+arm_override: list = [0.0, 0.0, 0.0, 0.0]
+arm_override_enabled: bool = False
+vla_task: str = ""
+
+# Gradio API / MCP ツールとして公開する関数
+def set_vla_task(task: str) -> str: ...
+def get_vla_task() -> str: ...
+def set_arm_cmd(values: list) -> str: ...
+```
+
+`arm_override` の適用場所 → `_arm_send_angles()` の `transfer.set_data()` 直前に挿入
+（歩行ループ・腕IK送信の両方に自動適用）。
+
+Gradio UI タブには追加不要。`mcp_server=True` 経由で外部から呼べるようにする。
+
+---
+
+### Step 2: 通信方式の確定
+
+SPEC の `requests.get/post` は Gradio MCP の SSE と噛み合わない。
+代わりに **`gradio_client.Client`** を使う:
+
+```python
+from gradio_client import Client
+mcp = Client("http://127.0.0.1:7860")
+task = mcp.predict(api_name="/get_vla_task")
+mcp.predict(cmd_list, api_name="/set_arm_cmd")
+```
+
+これにより型チェック・エラーハンドリングが整備された形で mcp-meridis と通信できる。
+
+---
+
+### Step 3: vla_arm_bridge.py の骨格作成（SmolVLA なしで動作確認できる形）
+
+`mrd_stream_viewer.py` の構造を踏まえ以下の構成とする:
+
+```
+main()
+├── parse_arguments()  --redis, --mcp-url, --fps, --mock
+├── load_redis_config()  （mrd_stream_viewer と同パターン）
+├── Redis 接続 + ping
+├── Gradio Client 接続
+├── SmolVLA ロード（--mock なら省略）
+└── メインループ
+    ├── get_vla_task() → 空なら skip
+    ├── get_fpv_frame()（mrd_stream_viewer のデコードロジック流用）
+    ├── Redis から右腕状態 [53,55,57,59] + 手先位置 [74,75,76] 読取
+    ├── obs 構築 → policy.select_action()（mock 時はランダム値）
+    └── action_chunk を CHUNK_SIZE ステップ分 set_arm_cmd() 送信
+```
+
+---
+
+### Step 4: SmolVLA obs フォーマット調整
+
+SPEC の `obs` を LeRobot の SmolVLA API に合わせる:
+
+```python
+obs = {
+    "observation.images.fpv": frame_tensor,   # [1,3,H,W] float32 0-1
+    "observation.state": state_tensor,         # [1,7] (腕4DOF + 手先XYZ3)
+    "task": [task_str],
+}
+actions = policy.select_action(obs)  # [1, chunk, 4]
+```
+
+LeRobot の実際の API に合わせて調整が必要な箇所があるため、
+Step 3 で mock 動作を確認してから統合する。
+
+---
+
+### Step 5: 配置先（確定）
+
+**`C:\development\mcp-meridis\vla_arm_bridge.py`** に作成する。
+Phase 2 の mcp-meridis.py 変更と同リポジトリで管理する。
+
+---
+
+### 実施順序まとめ
+
+| # | 作業 | ファイル | 依存 |
+|---|------|---------|------|
+| 1 | グローバル変数・3関数追加 + arm_override 適用 | `mcp-meridis.py` | なし |
+| 2 | Gradio API 公開確認（`/get_vla_task` 等） | `mcp-meridis.py` | Step 1 |
+| 3 | 骨格作成（mock モード付き） | `vla_arm_bridge.py` | Step 2 |
+| 4 | FPV フレーム受信確認（mrd_stream_viewer 流用） | `vla_arm_bridge.py` | Redis / merimujoco 起動 |
+| 5 | SmolVLA 統合 | `vla_arm_bridge.py` | CUDA 環境・lerobot |
+
+---
+
+## 確定事項
+
+1. **`vla_arm_bridge.py` の配置先**: `C:\development\mcp-meridis\` ✅
+2. **FPV フレーム Redis キー名**: `meridis_frame_pub` ✅
+3. **実施順序**: Step 1（mcp-meridis.py）→ vla_arm_bridge.py の順に実施 ✅
+
+---
+
+## 検証記録
+
+### Step 1 + Step 3 mock 疎通確認 ✅ 完了（2026-04-23）
+
+**実行コマンド**:
+```bash
+python vla_arm_bridge.py --redis redis-sim.json --mock
+```
+
+**確認結果**:
+
+| チェック項目 | 結果 |
+|---|---|
+| Redis 接続（127.0.0.1:6379） | ✅ OK |
+| mcp-meridis Gradio 接続（127.0.0.1:7860） | ✅ OK |
+| `get_vla_task()` API ポーリング | ✅ OK（空タスク時は待機メッセージ1回のみ） |
+| タスク設定後の検出 | ✅ OK（`'Touch the red ball'` を正しく受信） |
+| `set_arm_cmd()` mock 送信（10 steps） | ✅ OK（エラーなし） |
+
+**確認ログ（抜粋）**:
+```
+[INFO] Redis に接続しました: 127.0.0.1:6379
+[INFO] mcp-meridis に接続しました: http://127.0.0.1:7860
+[INFO] タスク未設定。set_vla_task() でタスクを入力してください。
+[MOCK] task='Touch the red ball'  ダミーアクション送信 (10 steps)
+```
+
+**注意事項**:
+- タスクは `set_vla_task()` の引数にテキストのみ渡す（関数呼び出し構文ごと入れない）
+- `--mock` モードでは FPV フレーム取得・腕状態取得をスキップするため PIL/torch 不要
+
+**次ステップ**: Step 4 — merimujoco `--stream` 起動後に実 FPV フレーム受信を確認
