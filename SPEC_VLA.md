@@ -218,7 +218,7 @@ if arm_override_enabled:
 
 ### Phase 3: vla_arm_bridge.py 作成
 
-**配置先**: `C:\\development\\meri-vla\\vla_arm_bridge.py`（本プロジェクト）
+**配置先**: `C:\\development\\meridis-vla\\vla_arm_bridge.py`（本プロジェクト）
 
 ```python
 """SmolVLA 右腕制御ブリッジ
@@ -283,7 +283,7 @@ while True:
 
 ### Phase 4: デモデータ収集（ファインチューニング用）
 
-**配置先**: `C:\\development\\meri-vla\\collect_arm_demo.py`
+**配置先**: `C:\\development\\meridis-vla\\collect_arm_demo.py`
 
 - merimujoco(ml-test)でリーダー実機をテレオペ（赤玉タッチ）
 - 記録: `meridis_fpv_frame`(画像) + 右腕状態 + 右手先位置 + 接触フラグ
@@ -292,7 +292,7 @@ while True:
 ### Phase 5: ファインチューニング
 
 ```bash
-cd C:\\development\\meri-vla
+cd C:\\development\\meridis-vla
 lerobot-train \\
   --policy.path=lerobot/smolvla_base \\
   --dataset.repo_id=holypong/roid1_red_ball \\
@@ -310,8 +310,8 @@ lerobot-train \\
 | `merimujoco.py` | **変更** ✅ | merimujoco (ml-test) — `--stream` オプション追加、FPV offscreen レンダリングをメインスレッドで実行 |
 | `mrd_stream_viewer.py` | **新規** ✅ | merimujoco (ml-test) — Redis から `meridis_frame_pub` を受信してリアルタイム表示 |
 | `mcp-meridis.py` | **変更** | mcp-meridis — 3 MCPツール追加 + arm_override（約25行） |
-| `vla_arm_bridge.py` | **新規** | **meri-vla**（本プロジェクト） |
-| `collect_arm_demo.py` | **新規** | **meri-vla**（本プロジェクト） |
+| `vla_arm_bridge.py` | **新規** | **meridis-vla**（本プロジェクト） |
+| `collect_arm_demo.py` | **新規** | **meridis-vla**（本プロジェクト） |
 
 ---
 
@@ -334,7 +334,7 @@ cd C:\\path\\to\\merimujoco
 python merimujoco.py --gethand true --view fpv --sphere 0.05,0.0,0.2 --redis redis-ai.json
 
 # ⑤ VLA ブリッジ起動（タスク待受け）
-cd C:\\development\\meri-vla
+cd C:\\development\\meridis-vla
 python vla_arm_bridge.py
 ```
 
@@ -365,7 +365,7 @@ Claude Code → MCP: set_vla_task("Touch the red ball with your right hand")
 | Claude Code (MCP クライアント) | **Windows** | mcp-meridis を MCP サーバ登録 |
 | mcp-meridis | Windows | Gradio SSE :7860 |
 | merimujoco (ml-test) | Windows | redis-ai.json で meridis_ai_pub 読取 |
-| SmolVLA (vla_arm_bridge) | **Windows (CUDA GPU)** | meri-vla プロジェクト |
+| SmolVLA (vla_arm_bridge) | **Windows (CUDA GPU)** | meridis-vla プロジェクト |
 | ml-mujoco (歩行AI学習) | WSL (参照のみ) | P9完了済み、今回は使用しない |
 
 ---
@@ -462,8 +462,8 @@ Step 3 で mock 動作を確認してから統合する。
 
 ### Step 5: 配置先（確定）
 
-**`C:\development\mcp-meridis\vla_arm_bridge.py`** に作成する。
-Phase 2 の mcp-meridis.py 変更と同リポジトリで管理する。
+**`C:\development\meridis-vla\vla_arm_bridge.py`** に配置する。
+SmolVLA 推論環境（Python 3.11 + lerobot）を mcp-meridis と分離して管理する。
 
 ---
 
@@ -481,7 +481,7 @@ Phase 2 の mcp-meridis.py 変更と同リポジトリで管理する。
 
 ## 確定事項
 
-1. **`vla_arm_bridge.py` の配置先**: `C:\development\mcp-meridis\` ✅
+1. **`vla_arm_bridge.py` の配置先**: `C:\development\meridis-vla\` ✅
 2. **FPV フレーム Redis キー名**: `meridis_frame_pub` ✅
 3. **実施順序**: Step 1（mcp-meridis.py）→ vla_arm_bridge.py の順に実施 ✅
 
@@ -518,4 +518,135 @@ python vla_arm_bridge.py --redis redis-sim.json --mock
 - タスクは `set_vla_task()` の引数にテキストのみ渡す（関数呼び出し構文ごと入れない）
 - `--mock` モードでは FPV フレーム取得・腕状態取得をスキップするため PIL/torch 不要
 
-**次ステップ**: Step 4 — merimujoco `--stream` 起動後に実 FPV フレーム受信を確認
+**次ステップ**: Step 5 — torch / lerobot インストール後に SmolVLA 統合
+
+---
+
+### Step 4: FPV フレーム受信確認 ✅ 完了（2026-04-24）
+
+**実行コマンド**:
+```bash
+python vla_arm_bridge.py --redis redis-sim.json --stream-only
+```
+
+**確認結果**:
+
+| チェック項目 | 結果 |
+|---|---|
+| FPV フレーム受信（meridis_frame_pub） | ✅ OK（7501 bytes） |
+| `get_vla_task()` タスク受信 | ✅ OK（`'Touch red ball using right hand'`） |
+| `set_arm_cmd` は送信しない（ロボット影響なし） | ✅ OK |
+
+**確認ログ（抜粋）**:
+```
+[INFO] Stream-only モードで起動します（FPV フレーム受信確認のみ、torch/Pillow 不要）。
+[INFO] タスク未設定。set_vla_task() でタスクを入力してください。
+[STREAM] task='Touch read ball using right hand'  FPV 7501 bytes  ← set_arm_cmd は送信しません
+```
+
+**補足**:
+- `--stream-only` フラグを追加。torch / Pillow 不要で FPV 受信のみ検証できる
+- merimujoco を `--stream` オプション付きで起動することで `meridis_frame_pub` にフレームが配信される
+
+**次ステップ**: Step 5 — torch / lerobot インストール後に SmolVLA 統合
+
+---
+
+## Step 5: torch / lerobot インストール手順（Windows 11）
+
+### 実行環境
+
+| 項目 | 値 |
+|---|---|
+| OS | Windows 11 |
+| GPU | NVIDIA GeForce RTX 4070 Laptop (8 GB VRAM) |
+| Driver | 566.07 |
+| CUDA Version | 12.7 |
+| Python（システム） | 3.13.12 ※lerobot 非対応のため仮想環境で 3.11 を使用 |
+
+---
+
+### A. Python 3.11 仮想環境の作成
+
+lerobot は Python 3.13 未対応のため、`py` ランチャーで 3.11 を指定して仮想環境を作成する。
+
+```powershell
+# Python 3.11 のインストール確認（未導入なら https://www.python.org/ からインストール）
+py -3.11 --version
+
+# mcp-meridis プロジェクト内に .venv311 として作成
+cd C:\development\mcp-meridis
+py -3.11 -m venv .venv311
+
+# 仮想環境を有効化
+.venv311\Scripts\activate
+```
+
+---
+
+### B. PyTorch (CUDA 12.4 ビルド) インストール
+
+CUDA 12.7 ドライバは下位バージョンのビルドと互換性があるため、安定版の cu124 ビルドを使用する。
+
+```bash
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+
+# 確認
+python -c "import torch; print(torch.__version__); print('CUDA available:', torch.cuda.is_available())"
+# 期待値: CUDA available: True
+```
+
+---
+
+### C. lerobot インストール
+
+```bash
+pip install lerobot
+
+# SmolVLA が読み込めるか確認
+python -c "from lerobot.common.policies.smolvla.modeling_smolvla import SmolVLAPolicy; print('OK')"
+```
+
+#### よくあるエラーと対処
+
+| エラー | 対処 |
+|---|---|
+| `av` のビルド失敗 | `pip install av --pre` または `winget install Gyan.FFmpeg` 後に再試行 |
+| `gymnasium` 関連エラー | `pip install gymnasium` を先に実行 |
+| `safetensors` エラー | `pip install safetensors` |
+
+---
+
+### D. SmolVLA モデルのダウンロード確認
+
+```bash
+# 初回のみ Hugging Face からダウンロード（数 GB）
+python -c "
+from lerobot.common.policies.smolvla.modeling_smolvla import SmolVLAPolicy
+policy = SmolVLAPolicy.from_pretrained('lerobot/smolvla_base')
+print('Model loaded OK')
+"
+```
+
+---
+
+### E. vla_arm_bridge.py の実行（SmolVLA 統合）
+
+```bash
+# .venv311 を有効化した状態で
+cd C:\development\mcp-meridis
+python vla_arm_bridge.py --redis redis-sim.json
+# （--mock / --stream-only なし = SmolVLA フル推論モード）
+```
+
+---
+
+### F. 動作確認チェックリスト
+
+```
+[ ] py -3.11 --version  → 3.11.x
+[ ] torch.cuda.is_available()  → True
+[ ] SmolVLAPolicy.from_pretrained() → エラーなし
+[ ] vla_arm_bridge.py 起動 → "[INFO] SmolVLA のロードが完了しました。"
+[ ] set_vla_task() 後に右腕 CMD(52,54,56,58) が変化する
+```
