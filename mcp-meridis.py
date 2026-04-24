@@ -311,10 +311,10 @@ def background_motion_control():
 
             # VLA arm override（歩行中も SmolVLA で右腕を制御）
             if arm_override_enabled:
-                data[52] = arm_override[0]
-                data[54] = arm_override[1]
-                data[56] = arm_override[2]
-                data[58] = arm_override[3]
+                data[52] = TRQ_ON; data[53] = arm_override[0]
+                data[54] = TRQ_ON; data[55] = arm_override[1]
+                data[56] = TRQ_ON; data[57] = arm_override[2]
+                data[58] = TRQ_ON; data[59] = arm_override[3]
                 transfer.set_data(REDIS_KEY_WRITE, data)
 
             # 安全停止要求チェック (B2修正): その場足踏み経由でサイクル完了時に停止
@@ -1095,10 +1095,10 @@ def set_arm_cmd(values_str: str) -> str:
         return "エラー: 4 要素のリスト、または空リスト [] で無効化してください"
 
     if arm_override_enabled:
-        data[52] = arm_override[0]
-        data[54] = arm_override[1]
-        data[56] = arm_override[2]
-        data[58] = arm_override[3]
+        data[52] = TRQ_ON; data[53] = arm_override[0]
+        data[54] = TRQ_ON; data[55] = arm_override[1]
+        data[56] = TRQ_ON; data[57] = arm_override[2]
+        data[58] = TRQ_ON; data[59] = arm_override[3]
         if transfer:
             transfer.set_data(REDIS_KEY_WRITE, data)
 
