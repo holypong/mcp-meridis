@@ -28,10 +28,10 @@ GradioによるWeb UIと、Redisを用いたロボット状態の送受信に対
 - **状態監視**  
   ロボットの現在状態（歩行/停止/時間/段階など）を20行のテキストで表示
 
-- **メタデータ出力**  
-  各パラメータの説明・型情報（メタデータ）をLLMや外部システムに提供可能
+- **Meridim90キー一覧・システム情報出力**
+  Meridim90配列のインデックス定義、現在の歩行/リンクパラメータ、利用可能なMCPツール一覧をAIエージェント向けに一括出力
 
-- **Redis連携**  
+- **Redis連携**
   ロボット状態の送受信をRedis経由で実施
 
 - **Redisキー動的切替**  
@@ -40,8 +40,11 @@ GradioによるWeb UIと、Redisを用いたロボット状態の送受信に対
 - **腕 IK 制御**  
   手先目標位置 (waist frame, m) を指定するだけで逆運動学を自動計算し、両腕の関節角度を送信。特異点エスケープを自動実行するため、安全に目標へ到達できる
 
-- **VLA 腕制御連携**  
+- **VLA 腕制御連携**
   自然言語タスク文字列を `vla_arm_bridge.py`（SmolVLA 推論プロセス）へ受け渡し、FPV 映像を使った右腕の自律制御を MCP ツール経由で操作できる
+
+- **歩行ログ収集・解析支援**
+  PADボタントリガによるCSVロギング、リアルタイム可視化、ZMP推定、歩容パラメータ推定、歩容安定性比較、IMU比較グラフ出力に対応
 
 ## 利用方法
 
@@ -56,10 +59,16 @@ GradioによるWeb UIと、Redisを用いたロボット状態の送受信に対
 
 [前提条件](#前提条件)を満たした上で、次の追加インストールを実行してください
 
-#### Gradio MCP対応版をインストール
+#### 基本パッケージをインストール
 
 ```bash
-pip install "gradio[mcp]>=5.29.0"
+pip install "gradio[mcp]>=5.29.0" redis numpy
+```
+
+解析・可視化ツールも使う場合は、描画・表計算・フィッティング用ライブラリもインストールしてください。
+
+```bash
+pip install pandas matplotlib scipy
 ```
 
 ### MCPサーバーの起動
@@ -298,8 +307,13 @@ flowchart LR
 - `eval_zmp.py` ... センサレス ZMP 評価ライブラリ（ZMPEstimator クラス）
 - `redis_logger.py` ... PADボタントリガによるRedisデータロガー（`log/logs-*.csv` に保存）
 - `redis_plotter2.py` ... 関節角度・足先位置・ZMP のリアルタイム可視化
+- `tools/estimate_walk_params.py` ... 前進歩行ログから歩容パラメータを推定し、`log/walkparam_est_*.json` に保存
+- `tools/compare_gait_stability.py` ... 2つの歩行ログから姿勢安定性を比較し、`report/gait_stability_compare.png` を出力
+- `tools/plot_imu_compare.py` ... `log/buf_input-simulator.csv` と `log/buf_input-real.csv` のIMU比較グラフを出力
+- `tools/plot_imu_compare_gyrofeedback.py` ... ジャイロフィードバックなし/ありの実機IMUログを比較
+- `tools/plot_imu_compare_gyro_split.py` ... 単一ジャイロゲインとRoll/Pitch独立ゲインのIMUログを比較
 - `walkparam.json` ... 歩行パラメータの初期値
-- `linkparam.json` ... リンク長・オフセットパラメータ（実機寸法に合わせて調整）
+- `linkparam.json` ... 脚・足裏・腕・頭部のリンク長/オフセットパラメータ（実機寸法に合わせて調整）
 - `README.md` ... このファイル
 
 ---
@@ -552,9 +566,76 @@ python redis_plotter2.py --window 10 --width 12 --height 8 # 表示ウィンド�
 
 ---
 
+## 歩容パラメータ推定ツール：tools/estimate_walk_params.py
+
+`redis_logger.py` で保存した前進歩行ログ（`log/logs-*.csv`）から、`walkparam.json` と同形式の推定パラメータJSONを生成します。
+
+### 使い方
+
+```bash
+python tools/estimate_walk_params.py
+python tools/estimate_walk_params.py --log log/logs-202604190935.csv
+python tools/estimate_walk_params.py --walkparam walkparam.json --out log/walkparam_est_test.json
+```
+
+### オプション
+
+| オプション | デフォルト | 説明 |
+|---|---|---|
+| `--log` | `log/` 内の最新 `logs-*.csv` | 入力CSVパス |
+| `--walkparam` | `walkparam.json` | ベースとして読み込む歩行パラメータJSON |
+| `--out` | `log/walkparam_est_YYYYMMDDHHMM.json` | 出力JSONパス |
+
+### 推定対象
+
+| パラメータ | 推定元 |
+|---|---|
+| `forward_stride` | 左右足先X位置の振幅 |
+| `foot_lift` | 左右足先Z位置の最大値 |
+| `hip_swing` | 左右股ロール角から逆算した横スイング量 |
+| `forward_lean_angle` | 大腿・膝・足首ピッチ角の幾何関係 |
+| `cycle_duration` | 足先X軌道の周期推定 |
+| `swing_ratio` | 足先Zが上がっている期間比率 |
+
+---
+
+## 歩容安定性比較ツール：tools/compare_gait_stability.py
+
+2つの歩行ログを比較し、姿勢角・ジャイロ・加速度の標準偏差やpeak-to-peakをコンソールに表示し、比較グラフを `report/` に保存します。
+
+### 使い方
+
+```bash
+python tools/compare_gait_stability.py
+python tools/compare_gait_stability.py --base log/logs-before.csv --new log/logs-after.csv
+python tools/compare_gait_stability.py --base log/logs-before.csv --new log/logs-after.csv --out report/gait_compare.png
+```
+
+### オプション
+
+| オプション | デフォルト | 説明 |
+|---|---|---|
+| `--base` | `log/` 内の最新2件の古い方 | 比較元ログCSV |
+| `--new` | `log/` 内の最新2件の新しい方 | 比較先ログCSV |
+| `--out` | `report/gait_stability_compare.png` | 出力グラフパス |
+
+---
+
+## IMU比較グラフツール：tools/plot_imu_compare*.py
+
+固定ファイル名のIMUログを読み込み、加速度・ジャイロ・姿勢角の比較グラフを `report/` に保存します。
+
+| スクリプト | 入力 | 出力 |
+|---|---|---|
+| `tools/plot_imu_compare.py` | `log/buf_input-simulator.csv`, `log/buf_input-real.csv` | `report/imu_compare_sim_vs_real.png` |
+| `tools/plot_imu_compare_gyrofeedback.py` | `log/buf_input-real.csv`, `log/buf_input-real-jyrofeedback.csv` | `report/imu_compare_real_vs_gyrofeedback.png` |
+| `tools/plot_imu_compare_gyro_split.py` | `log/buf_input-real-jyrofeedback.csv`, `log/buf_input-real-gyro-independent.csv` | `report/imu_compare_gyro_single_vs_split.png` |
+
+---
+
 ## 歩容パラメータ解説
 
-歩行パラメータは `walkparam.json` に記述され、起動時に読み込まれます。  
+歩行パラメータは `walkparam.json` に記述され、起動時に読み込まれます。
 MCP ツール `set_params_text` で実行中に変更でき、`get_params_text` で現在値を確認できます。
 
 ### タイミング・周期
@@ -585,7 +666,7 @@ MCP ツール `set_params_text` で実行中に変更でき、`get_params_text` 
 
 | パラメータ | デフォルト | 説明 |
 |---|---|---|
-| `arm_swing_enable` | false | True: 位相連動腕振り / False: 肩ロール固定 |
+| `arm_swing_enable` | true | True: 位相連動腕振り / False: 肩ロール固定 |
 | `arm_swing_angle` | 5.0 deg | 腕振り角度振幅（False 時は肩ロール固定角） |
 | `arm_swing_phase_offset` | 0.0 rad | 腕振り位相先行量（ヨー方向の角運動量を打ち消すための位相調整） |
 
@@ -602,3 +683,38 @@ MCP ツール `set_params_text` で実行中に変更でき、`get_params_text` 
 | パラメータ | デフォルト | 説明 |
 |---|---|---|
 | `smooth_stop` | false | True: 停止時に自動で1歩追加してその場足踏みへ移行 |
+
+---
+
+## リンクパラメータ解説
+
+`linkparam.json` は脚IK、腕IK、ZMP推定で使用するロボット寸法をまとめた設定ファイルです。Paramsタブ/MCPの `get_params_text` では脚制御用の `LinkParams` が表示され、腕IKとZMP推定では同じJSONから追加の腕・足裏寸法も読み込みます。
+
+### 脚IK・歩行制御
+
+| パラメータ | 説明 |
+|---|---|
+| `HIP_OFFSET_Y` | 腰中心から股関節ロール軸までのY方向オフセット |
+| `THIGH_LENGTH` | 太ももの長さ |
+| `SHANK_LENGTH` | すねの長さ |
+| `ANKLE_LENGTH` | 足首リンク長 |
+| `FOOT_OFFSET_Z` | 足首ロール軸から足裏までのZ方向オフセット |
+| `FOOT_OFFSET_Y` | 足首ロール軸から足裏中心までのY方向オフセット |
+| `SHORTEN_LEG_LENGTH` | 立位姿勢で脚を短縮する量 |
+
+### ZMP推定
+
+| パラメータ | 説明 |
+|---|---|
+| `FOOT_HALF_LEN` | 足裏支持多角形の前後半長 |
+| `FOOT_HALF_WIDTH` | 足裏支持多角形の左右半幅 |
+
+### 腕IK
+
+| パラメータ | 説明 |
+|---|---|
+| `SHOULDER_OFFSET_X` | waist frameから肩関節までのX方向オフセット |
+| `SHOULDER_OFFSET_Y` | waist frameから肩関節までのY方向オフセット |
+| `SHOULDER_OFFSET_Z` | waist frameから肩関節までのZ方向オフセット |
+| `UPPER_ARM_LENGTH` | 上腕長 |
+| `LOWER_ARM_LENGTH` | 前腕長 |
