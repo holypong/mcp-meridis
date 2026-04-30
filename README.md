@@ -602,7 +602,3 @@ MCP ツール `set_params_text` で実行中に変更でき、`get_params_text` 
 | パラメータ | デフォルト | 説明 |
 |---|---|---|
 | `smooth_stop` | false | True: 停止時に自動で1歩追加してその場足踏みへ移行 |
-
----
-## さらに詳しく学びたい人向け
-[SPEC_MCP.md](SPEC_MCP.md)を読み進めてください。
