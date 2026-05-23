@@ -244,7 +244,7 @@ merimujo上のヒューマノイドが反応したら成功です。
 
 Claude Code でもMCPサーバーを使用できます
 
-(Claude desktopからのロボット制御で目的を達成できているならこの章は不要です)
+(Quick Start 5 の Claude desktopからのロボット制御で目的を達成できているならこの章は不要です)
 
 ### 1) Claude Code をインストール
 
