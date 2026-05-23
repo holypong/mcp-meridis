@@ -8,6 +8,9 @@ wheels/
 reference/
 log/
 report/
+.gradio/
+.mcp.json
+CLAUDE.md
 
 # Virtual environments
 .venv
