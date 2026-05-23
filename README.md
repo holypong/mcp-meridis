@@ -35,8 +35,7 @@ mcp-meridisは、ロボットの制御（主に歩行）・パラメータ管理
   Web UI からモニタ・ログしたいデータソースを切り替え可能です。
 
 - **VLA 腕制御連携**  
-  本バージョンでは言及しません
-
+  VLA(Vison-Language-Action)の SmolVLA 推論プロセス と連携して腕制御が可能です。 ただし、SmolVLA を利用したプログラムは 2026.05時点では未公開です。
 
 
 ### Meridian プロジェクトのエコシステム
@@ -246,13 +245,13 @@ python mcp-meridis.py
 | ロボットの状態を確認してください | 歩行状態・時間・IMU・転倒判定などを表示 |
 | システムリセットを送信してください | リセット信号を送信してシステムを初期化 |
 
-### うまく接続できないとき
+### MCPサーバーが接続できないとき
 
-- `python mcp-meridis.py` が起動したままか確認する
-- SSE エンドポイントが `http://127.0.0.1:7860/gradio_api/mcp/sse` になっているか確認する
+- claude desktop がインストールされているか確認する
+- node.js がインストールされているか確認する
+- AIチャット`claude desktop`を起動する前に、`python mcp-meridis.py` が起動されていることを確認する
+- MCPサーバーの起動ログと`claude_desktop_config.json`に記載する SSE エンドポイントが `http://127.0.0.1:7860/gradio_api/mcp/sse` で一致しているかを確認する
 - `claude_desktop_config.json` の JSON 構文（カンマや波括弧）を確認する
-- Node.js インストール後に Claude Desktop を再起動する
-
 
 ---
 

@@ -4,16 +4,6 @@ Quick Start は [README.md](README.md) を参照してください。
 
 ---
 
-## 追加パッケージのインストール
-
-解析・可視化ツール（redis_plotter2.py / tools/）を使う場合は、描画・表計算・フィッティング用ライブラリもインストールしてください。
-
-```bash
-pip install pandas matplotlib scipy
-```
-
----
-
 ## コマンドとオプション
 
 ```bash
@@ -156,21 +146,34 @@ Redisキーをドロップダウンで選択してリアルタイムデータを
 
 受信データソースのRedisキーをドロップダウンで選択・切り替え（タブを開くたびに現在キーで更新）。バッファ内容の表示・CSV保存も可能。
 
+![InputBuf](image/mcp-meridis-inputbuf.png)
+
 ### OutputBufタブ
 
 ロボットとの送信データバッファを表示・CSV保存。
+
+![OutputBuf](image/mcp-meridis-outputbuf.png)
+
 
 ### GetKeyIndexタブ
 
 Meridim90配列のキーインデックス一覧を表示。
 
+![GetKeyIndex](image/mcp-meridis-getkeyindex.png)
+
+
 ### SysInfoタブ
 
 システム全体の情報を一括取得（AIエージェント向け）。
 
+![SysInfo](image/mcp-meridis-sysinfo.png)
+
 ### Armタブ
 
 両腕の逆運動学（IK）制御を行います。手先目標位置を `x,y,z` [m]（waist frame）で入力し、IK を計算して関節角度を送信します。
+
+![Arm](image/mcp-meridis-arm.png)
+
 
 | ボタン | 対象 | 動作 |
 |---|---|---|
@@ -186,7 +189,10 @@ Meridim90配列のキーインデックス一覧を表示。
 
 ### VLAタブ
 
-`vla_arm_bridge.py`（SmolVLA 推論プロセス）との連携インターフェースです。タスクの指示・確認と、右腕の角度コマンドの直接上書きを管理します。
+SmolVLA 推論プロセスとの連携する Web UIです。
+`vla_arm_bridge.py`(2026.05 未公開)とタスクの指示・確認と、右腕の角度コマンドの直接上書きを管理します。
+
+![vla](image/mcp-meridis-vla.png)
 
 **タスク管理エリア**
 
@@ -208,62 +214,67 @@ Meridim90配列のキーインデックス一覧を表示。
 
 ---
 
-## ファイル構成
-
-- `mcp-meridis.py` ... メインサーバー・UI・制御ロジック
-- `redis_receiver.py` ... Redisからのデータ受信
-- `redis_transfer.py` ... Redisへのデータ送信
-- `mrd_walk_ctrl.py` ... 歩行制御ロジック（WalkController、歩行パラメータ管理）
-- `mrd_arm_ctrl.py` ... 腕 IK/FK ライブラリ（両腕の逆運動学・可動域クランプ・Meridim インデックス変換）
-- `mrd_info.py` ... Meridim90配列キー定義とシステム情報
-- `eval_zmp.py` ... センサレス ZMP 評価ライブラリ（ZMPEstimator クラス）
-- `redis_logger.py` ... PADボタントリガによるRedisデータロガー（`log/logs-*.csv` に保存）
-- `redis_plotter2.py` ... 関節角度・足先位置・ZMP のリアルタイム可視化
-- `tools/estimate_walk_params.py` ... 前進歩行ログから歩容パラメータを推定し、`log/walkparam_est_*.json` に保存
-- `tools/compare_gait_stability.py` ... 2つの歩行ログから姿勢安定性を比較し、`report/gait_stability_compare.png` を出力
-- `tools/plot_imu_compare.py` ... `log/buf_input-simulator.csv` と `log/buf_input-real.csv` のIMU比較グラフを出力
-- `tools/plot_imu_compare_gyrofeedback.py` ... ジャイロフィードバックなし/ありの実機IMUログを比較
-- `tools/plot_imu_compare_gyro_split.py` ... 単一ジャイロゲインとRoll/Pitch独立ゲインのIMUログを比較
-- `walkparam.json` ... 歩行パラメータの初期値
-- `linkparam.json` ... 脚・足裏・腕・頭部のリンク長/オフセットパラメータ（実機寸法に合わせて調整）
-- `README.md` ... Quick Start ガイド
-- `README_advance.md` ... このファイル（詳細操作ガイド）
-
----
-
 ## MCP サーバー機能 全一覧
 
-AIエージェント（Claude、Cursor等）から利用可能な関数：
+AIエージェント（Claude、Cursor等）から利用可能な関数（全28件）：
 
-- `getmrdkey()`: Meridim90キーインデックス一覧取得
-- `get_params_text()`: 現在のパラメータテキスト取得
-- `set_params_text(text)`: パラメータ一括設定
-- `robot_walk(duration)`: ロボット歩行開始
-- `robot_stop()`: ロボット停止（その場足踏み経由で安全停止、`smooth_stop`設定により動作変更可能）
-- `robot_home()`: ホーム姿勢（全関節ゼロ）へ移行
-- `robot_idle()`: IDLE姿勢（歩行直前立位）へ移行
-- `robot_status()`: ロボット状態確認
-- `system_reset()`: システムリセット
-- `get_buf_output(start, count, decimal)`: 送信データバッファ取得
-- `filesave_buf_input()`: 受信データをCSV保存
-- `filesave_buf_output()`: 送信データをCSV保存
-- `filepathget_buf_input()`: 受信データCSVファイルパス取得
-- `filepathget_buf_output()`: 送信データCSVファイルパス取得
-- `get_redis_data(key)`: 指定RedisキーのデータをJSON形式で取得
-- `get_pad_data(key)`: 指定RedisキーからPADコントローラ値（ボタン・アナログスティック）を取得
-- `set_redis_key_read(key)`: 受信データソースのRedisキー（`REDIS_KEY_READ`）を変更（即時反映）
-- `get_redis_key_read()`: 現在の受信RedisキーとキーID一覧を取得
-- `get_buf_input(start, count, decimal, key)`: 受信データバッファ取得（`key`省略時は現在の`REDIS_KEY_READ`を使用）
-- `get_initial_params_text()`: JSON ファイルの初期値を取得（メモリへの反映には `set_params_text` が必要）
-- `get_system_info()`: システム情報一括取得
-- `arm_get_state()`: 両腕の現在関節角度（VAL）と手先位置（FK）を取得
-- `arm_set_position(xyz_str)`: 右手先目標位置 `"x,y,z"` [m] を指定して IK 計算・送信（特異点エスケープ付き）
-- `left_arm_set_position(xyz_str)`: 左手先目標位置 `"x,y,z"` [m] を指定して IK 計算・送信
-- `arm_prep_pose()`: 右腕を準備ポーズ（肘 90° 屈曲）へ移行
-- `left_arm_prep_pose()`: 左腕を準備ポーズへ移行
-- `set_vla_task(task)`: VLA タスク文字列を設定（`vla_arm_bridge.py` がポーリングして SmolVLA への指示に使用）
-- `get_vla_task()`: 現在の VLA タスク文字列を取得
-- `set_arm_cmd(values_str)`: 右腕 4 軸角度 `"[肩P, 肩R, 肘Y, 肘P]"` を上書き送信（空配列 `"[]"` で無効化）
+### ロボット制御
+
+| 関数 | 引数 | 説明 |
+|---|---|---|
+| `robot_home()` | なし | 全関節ゼロのホーム姿勢へ移行 |
+| `robot_idle()` | なし | IDLE姿勢（歩行直前立位）へ移行 |
+| `robot_walk(duration)` | `duration` — 歩行時間（秒）。省略時は `params.duration` を使用 | ロボット歩行開始 |
+| `robot_stop()` | なし | ロボット停止。`smooth_stop=True` でサイクル完了後に停止、`False` でその場足踏み後に即停止 |
+| `system_reset()` | なし | システムリセット信号（data[0]=5556）を送信し、両腕IKを解除 |
+| `robot_status()` | なし | ロボット状態確認（状態・時間・歩行段階・IMU加速度/ジャイロ/姿勢角・転倒判定） |
+
+### パラメータ
+
+| 関数 | 引数 | 説明 |
+|---|---|---|
+| `getmrdkey()` | なし | Meridim90 キーインデックス一覧取得 |
+| `get_params_text()` | なし | 現在のパラメータテキスト取得（WalkParams + LinkParams） |
+| `set_params_text(text)` | `text` — `[WalkParams]` / `[LinkParams]` セクション形式のテキスト | パラメータ一括設定 |
+| `get_initial_params_text()` | なし | JSON ファイルの初期値を取得（メモリへの反映には `set_params_text` が必要） |
+| `get_system_info()` | なし | システム情報一括取得（AIエージェント向け） |
+
+### Redis
+
+| 関数 | 引数 | 説明 |
+|---|---|---|
+| `get_redis_data(key)` | `key` — Redisキー名 | 指定RedisキーのMeridim90全データを取得 |
+| `get_pad_data(key)` | `key` — Redisキー名 | 指定RedisキーからPADコントローラ値（ボタン・アナログスティック）を取得 |
+| `set_redis_key_read(key)` | `key` — 有効値: `meridis_sim_pub` / `meridis_ai_pub` / `meridis_calc_pub` / `meridis_mgr_pub` / `meridis_console_pub` | 受信データソースの `REDIS_KEY_READ` を変更（即時反映） |
+| `get_redis_key_read()` | なし | 現在の受信RedisキーとキーID一覧を取得 |
+
+### バッファ
+
+| 関数 | 引数 | 説明 |
+|---|---|---|
+| `get_buf_input(start, count, decimal, key)` | `start` — 開始位置、`count` — 取得数、`decimal` — 小数点桁数、`key` — Redisキー（省略時は現在の `REDIS_KEY_READ`） | 受信データバッファ取得 |
+| `get_buf_output(start, count, decimal)` | `start` — 開始位置、`count` — 取得数、`decimal` — 小数点桁数 | 送信データバッファ取得 |
+| `filesave_buf_input()` | なし | 受信データを `buf_input.csv` に保存 |
+| `filesave_buf_output()` | なし | 送信データを `buf_output.csv` に保存 |
+
+### 腕 IK 制御
+
+| 関数 | 引数 | 説明 |
+|---|---|---|
+| `arm_get_state()` | なし | 両腕の現在関節角度（VAL）と手先位置（FK）を取得 |
+| `arm_set_position(xyz_str)` | `xyz_str` — `"x,y,z"` [m]（waist frame） | 右手先目標位置から IK 計算・送信（特異点エスケープ付き） |
+| `arm_prep_pose()` | なし | 右腕を準備ポーズ（肩P/R=0°、肘Y=0°、肘P=−90°）へ移行 |
+| `left_arm_set_position(xyz_str)` | `xyz_str` — `"x,y,z"` [m]（waist frame） | 左手先目標位置から IK 計算・送信 |
+| `left_arm_prep_pose()` | なし | 左腕を準備ポーズへ移行 |
+
+### VLA 腕制御
+
+| 関数 | 引数 | 説明 |
+|---|---|---|
+| `set_vla_task(task)` | `task` — タスク文字列 | VLA タスクを設定（`vla_arm_bridge.py` がポーリングして SmolVLA への指示に使用） |
+| `get_vla_task()` | なし | 現在の VLA タスク文字列を取得 |
+| `set_arm_cmd(values_str)` | `values_str` — `"[肩P, 肩R, 肘Y, 肘P]"` [deg]、空配列 `"[]"` で無効化 | 右腕4軸角度を上書き送信し `arm_override` を有効化 |
+| `arm_override_off()` | なし | `arm_override` を無効化（VLA/Override ON 状態を解除） |
 
 ---
 
@@ -319,6 +330,16 @@ Claude Desktop または Claude Code で mcp-meridis に接続した状態で、
 | 歩かせながらステータスを確認して、歩行が終わったらバッファをCSVに保存してください | 歩行開始 → 状態確認 → CSV保存 を順番に実行 |
 
 ---
+
+## 追加パッケージのインストール
+
+解析・可視化ツール（redis_plotter2.py / tools/）を使う場合は、描画・表計算・フィッティング用ライブラリもインストールしてください。
+
+```bash
+pip install pandas matplotlib scipy
+```
+---
+
 
 ## データ収集ツール：redis_logger.py
 
@@ -539,3 +560,26 @@ MCP ツール `set_params_text` で実行中に変更でき、`get_params_text` 
 | `SHOULDER_OFFSET_Z` | waist frameから肩関節までのZ方向オフセット |
 | `UPPER_ARM_LENGTH` | 上腕長 |
 | `LOWER_ARM_LENGTH` | 前腕長 |
+
+---
+
+## ファイル構成
+
+- `mcp-meridis.py` ... メインサーバー・UI・制御ロジック
+- `redis_receiver.py` ... Redisからのデータ受信
+- `redis_transfer.py` ... Redisへのデータ送信
+- `mrd_walk_ctrl.py` ... 歩行制御ロジック（WalkController、歩行パラメータ管理）
+- `mrd_arm_ctrl.py` ... 腕 IK/FK ライブラリ（両腕の逆運動学・可動域クランプ・Meridim インデックス変換）
+- `mrd_info.py` ... Meridim90配列キー定義とシステム情報
+- `eval_zmp.py` ... センサレス ZMP 評価ライブラリ（ZMPEstimator クラス）
+- `redis_logger.py` ... PADボタントリガによるRedisデータロガー（`log/logs-*.csv` に保存）
+- `redis_plotter2.py` ... 関節角度・足先位置・ZMP のリアルタイム可視化
+- `tools/estimate_walk_params.py` ... 前進歩行ログから歩容パラメータを推定し、`log/walkparam_est_*.json` に保存
+- `tools/compare_gait_stability.py` ... 2つの歩行ログから姿勢安定性を比較し、`report/gait_stability_compare.png` を出力
+- `tools/plot_imu_compare.py` ... `log/buf_input-simulator.csv` と `log/buf_input-real.csv` のIMU比較グラフを出力
+- `tools/plot_imu_compare_gyrofeedback.py` ... ジャイロフィードバックなし/ありの実機IMUログを比較
+- `tools/plot_imu_compare_gyro_split.py` ... 単一ジャイロゲインとRoll/Pitch独立ゲインのIMUログを比較
+- `walkparam.json` ... 歩行パラメータの初期値
+- `linkparam.json` ... 脚・足裏・腕・頭部のリンク長/オフセットパラメータ（実機寸法に合わせて調整）
+- `README.md` ... Quick Start ガイド
+- `README_advance.md` ... このファイル（詳細操作ガイド）
