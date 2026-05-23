@@ -4,7 +4,7 @@
 
 本プログラム（mcp-meridis）は Meridian プロジェクトのエコシステム上で動作します。
 
-mcp-meridisは、ロボットの歩行制御・パラメータ管理・状態監視を行うための Python 製 Web アプリです。  
+mcp-meridisは、ロボットの制御（主に歩行）・パラメータ管理・状態監視・ログ分析を行うための Python 製 Web アプリです。  
 - **GradioによるWeb UI** からボタン操作でロボットを直感的に制御できます
 - **MCPサーバー** として AI エージェント（Claude 等）からの自然言語制御にも対応しています。
 
@@ -294,4 +294,10 @@ claude mcp add --transport sse mcp-meridis http://127.0.0.1:7860/gradio_api/mcp/
 
 ## 詳細ドキュメント
 
-より詳しい設定・操作方法は [README_advance.md](README_advance.md) を参照してください。
+[README_advance.md](README_advance.md) では、次の内容をまとめています。
+
+- 起動オプションと接続設定（シミュレーション/実機）
+- Web UI 全タブの操作ガイド
+- MCPツール一覧と実用プロンプト例
+- ログ収集・可視化・解析ツールの使い方
+- ファイル構成と主要パラメータのリファレンス
