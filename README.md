@@ -267,17 +267,18 @@ python mcp-meridis.py
 
 ### 3) Claude Code に MCP 設定を追加
 
-![claudecode](image/claudecode-mcp.png)
-
 Claude Code を起動しているターミナルで以下を実行してください
 
 ```bash
 claude mcp add --transport sse mcp-meridis http://127.0.0.1:7860/gradio_api/mcp/sse
 ```
 
+![claudecode](image/claudecode-mcp.png)
+
 追加後、`/mcp` コマンドで接続状態を確認できます。`connected`であれば成功です。
 
 ![claudecode](image/claudecode-mcplist.png)
+
 
 **設定手順がわからない場合、Claude Code に以下のように依頼するとやってくれます。**
 
