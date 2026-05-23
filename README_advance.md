@@ -331,6 +331,124 @@ Claude Desktop または Claude Code で mcp-meridis に接続した状態で、
 
 ---
 
+## 歩容パラメータ解説
+
+歩行パラメータは `walkparam.json` に記述され、起動時に読み込まれます。
+MCP ツール `set_params_text` で実行中に変更でき、`get_params_text` で現在値を確認できます。
+
+### タイミング・周期
+
+| パラメータ | デフォルト | 説明 |
+|---|---|---|
+| `cycle_duration` | 1.2 s | 1歩行周期の時間 |
+| `swing_ratio` | 0.4 | 周期中の遊脚期間の割合 (0.0–1.0) |
+| `landing_period_ratio` | 0.1 | 両足接地期間の割合 |
+| `weight_shift_duration_ratio` | 0.30 | 重心移動期間の割合。小さいと重心が支持脚に乗り切る前に遊脚が上がりやすい |
+| `init_wait_time` | 0.0 s | 歩行開始前の待機時間 |
+| `phase_offset` | π rad | 左右の位相差（π = 逆位相） |
+| `duration` | 5.0 s | 歩行継続時間 |
+
+### 姿勢・軌道
+
+| パラメータ | デフォルト | 説明 |
+|---|---|---|
+| `foot_lift` | 0.014 m | 遊脚の持ち上げ量 |
+| `hip_swing` | 0.016 m | 横方向の重心移動量。小さいと支持脚への重心移動が不足する |
+| `lateral_swing_ratio_1st` | 0.8 | 歩行開始1歩目の横スイング倍率 |
+| `forward_stride` | 0.02 m | 前後方向の歩幅 |
+| `max_stride` | 0.045 m | 前後方向の最大歩幅 |
+| `forward_lean_angle` | 2.0 deg | 上体の前傾角度（正値=前傾）。太ももピッチと足首ピッチを同量逆方向に調整し、足裏の接地角を維持する |
+| `foot_swing_mode` | 0 | 遊脚軌道モード (0: 正弦波, 1: サイクロイド) |
+
+### 腕振り
+
+| パラメータ | デフォルト | 説明 |
+|---|---|---|
+| `arm_swing_enable` | true | True: 位相連動腕振り / False: 肩ロール固定 |
+| `arm_swing_angle` | 5.0 deg | 腕振り角度振幅（False 時は肩ロール固定角） |
+| `arm_swing_phase_offset` | 0.0 rad | 腕振り位相先行量（ヨー方向の角運動量を打ち消すための位相調整） |
+
+### ジャイロフィードバック
+
+| パラメータ | デフォルト | 説明 |
+|---|---|---|
+| `mix_enable` | false | ジャイロフィードバックの有効化。IMUのロール・ピッチ角速度を足首角度に重畳する |
+| `mix_gyro_g_roll` | 0.0001 | ロール軸のジャイロゲイン係数。大きくすると横揺れへの応答が強くなる |
+| `mix_gyro_g_pitch` | 0.0002 | ピッチ軸のジャイロゲイン係数。大きくすると前後揺れへの応答が強くなるが、過補正に注意 |
+
+### 停止動作
+
+| パラメータ | デフォルト | 説明 |
+|---|---|---|
+| `smooth_stop` | false | True: 停止時に自動で1歩追加してその場足踏みへ移行 |
+
+---
+
+## リンクパラメータ解説
+
+`linkparam.json` は脚IK、腕IK、ZMP推定で使用するロボット寸法をまとめた設定ファイルです。Paramsタブ/MCPの `get_params_text` では脚制御用の `LinkParams` が表示され、腕IKとZMP推定では同じJSONから追加の腕・足裏寸法も読み込みます。
+
+### 脚IK・歩行制御
+
+| パラメータ | 説明 |
+|---|---|
+| `HIP_OFFSET_Y` | 腰中心から股関節ロール軸までのY方向オフセット |
+| `THIGH_LENGTH` | 太ももの長さ |
+| `SHANK_LENGTH` | すねの長さ |
+| `ANKLE_LENGTH` | 足首リンク長 |
+| `FOOT_OFFSET_Z` | 足首ロール軸から足裏までのZ方向オフセット |
+| `FOOT_OFFSET_Y` | 足首ロール軸から足裏中心までのY方向オフセット |
+| `SHORTEN_LEG_LENGTH` | 立位姿勢で脚を短縮する量 |
+
+### ZMP推定
+
+| パラメータ | 説明 |
+|---|---|
+| `FOOT_HALF_LEN` | 足裏支持多角形の前後半長 |
+| `FOOT_HALF_WIDTH` | 足裏支持多角形の左右半幅 |
+
+### 腕IK
+
+| パラメータ | 説明 |
+|---|---|
+| `SHOULDER_OFFSET_X` | waist frameから肩関節までのX方向オフセット |
+| `SHOULDER_OFFSET_Y` | waist frameから肩関節までのY方向オフセット |
+| `SHOULDER_OFFSET_Z` | waist frameから肩関節までのZ方向オフセット |
+| `UPPER_ARM_LENGTH` | 上腕長 |
+| `LOWER_ARM_LENGTH` | 前腕長 |
+
+---
+
+## ファイル構成
+
+- マニュアル
+  - `README.md` ... Quick Start ガイド
+  - `README_advance.md` ... このファイル（詳細操作ガイド）
+
+- メイン
+  - `mcp-meridis.py` ... メインサーバー・UI・制御ロジック
+  - `walkparam.json` ... 歩行パラメータの初期値
+  - `linkparam.json` ... 脚・足裏・腕・頭部のリンク長/オフセットパラメータ（実機寸法に合わせて調整）
+
+- ライブラリ
+  - `mrd_walk_ctrl.py` ... 歩行制御ロジック（WalkController、歩行パラメータ管理）
+  - `mrd_arm_ctrl.py` ... 腕 IK/FK ライブラリ（両腕の逆運動学・可動域クランプ・Meridim インデックス変換）
+  - `mrd_info.py` ... Meridim90配列キー定義とシステム情報
+  - `redis_receiver.py` ... Redisからのデータ受信
+  - `redis_transfer.py` ... Redisへのデータ送信
+
+- ツール
+  - `redis_logger.py` ... PADボタントリガによるRedisデータロガー（`log/logs-*.csv` に保存）
+  - `redis_plotter2.py` ... 関節角度・足先位置・ZMP のリアルタイム可視化
+    - `eval_zmp.py` ... センサレス ZMP 評価ライブラリ（ZMPEstimator クラス）
+  - `tools/estimate_walk_params.py` ... 前進歩行ログから歩容パラメータを推定し、`log/walkparam_est_*.json` に保存
+  - `tools/compare_gait_stability.py` ... 2つの歩行ログから姿勢安定性を比較し、`report/gait_stability_compare.png` を出力
+  - `tools/plot_imu_compare.py` ... `log/buf_input-simulator.csv` と `log/buf_input-real.csv` のIMU比較グラフを出力
+  - `tools/plot_imu_compare_gyrofeedback.py` ... ジャイロフィードバックなし/ありの実機IMUログを比較
+  - `tools/plot_imu_compare_gyro_split.py` ... 単一ジャイロゲインとRoll/Pitch独立ゲインのIMUログを比較
+
+---
+
 ## 追加パッケージのインストール
 
 解析・可視化ツール（redis_plotter2.py / tools/）を使う場合は、描画・表計算・フィッティング用ライブラリもインストールしてください。
@@ -473,113 +591,3 @@ python tools/compare_gait_stability.py --base log/logs-before.csv --new log/logs
 | `tools/plot_imu_compare_gyrofeedback.py` | `log/buf_input-real.csv`, `log/buf_input-real-gyrofeedback.csv` | `report/imu_compare_real_vs_gyrofeedback.png` |
 | `tools/plot_imu_compare_gyro_split.py` | `log/buf_input-real-gyrofeedback.csv`, `log/buf_input-real-gyro-independent.csv` | `report/imu_compare_gyro_single_vs_split.png` |
 
----
-
-## 歩容パラメータ解説
-
-歩行パラメータは `walkparam.json` に記述され、起動時に読み込まれます。
-MCP ツール `set_params_text` で実行中に変更でき、`get_params_text` で現在値を確認できます。
-
-### タイミング・周期
-
-| パラメータ | デフォルト | 説明 |
-|---|---|---|
-| `cycle_duration` | 1.2 s | 1歩行周期の時間 |
-| `swing_ratio` | 0.4 | 周期中の遊脚期間の割合 (0.0–1.0) |
-| `landing_period_ratio` | 0.1 | 両足接地期間の割合 |
-| `weight_shift_duration_ratio` | 0.30 | 重心移動期間の割合。小さいと重心が支持脚に乗り切る前に遊脚が上がりやすい |
-| `init_wait_time` | 0.0 s | 歩行開始前の待機時間 |
-| `phase_offset` | π rad | 左右の位相差（π = 逆位相） |
-| `duration` | 5.0 s | 歩行継続時間 |
-
-### 姿勢・軌道
-
-| パラメータ | デフォルト | 説明 |
-|---|---|---|
-| `foot_lift` | 0.014 m | 遊脚の持ち上げ量 |
-| `hip_swing` | 0.016 m | 横方向の重心移動量。小さいと支持脚への重心移動が不足する |
-| `lateral_swing_ratio_1st` | 0.8 | 歩行開始1歩目の横スイング倍率 |
-| `forward_stride` | 0.02 m | 前後方向の歩幅 |
-| `max_stride` | 0.045 m | 前後方向の最大歩幅 |
-| `forward_lean_angle` | 2.0 deg | 上体の前傾角度（正値=前傾）。太ももピッチと足首ピッチを同量逆方向に調整し、足裏の接地角を維持する |
-| `foot_swing_mode` | 0 | 遊脚軌道モード (0: 正弦波, 1: サイクロイド) |
-
-### 腕振り
-
-| パラメータ | デフォルト | 説明 |
-|---|---|---|
-| `arm_swing_enable` | true | True: 位相連動腕振り / False: 肩ロール固定 |
-| `arm_swing_angle` | 5.0 deg | 腕振り角度振幅（False 時は肩ロール固定角） |
-| `arm_swing_phase_offset` | 0.0 rad | 腕振り位相先行量（ヨー方向の角運動量を打ち消すための位相調整） |
-
-### ジャイロフィードバック
-
-| パラメータ | デフォルト | 説明 |
-|---|---|---|
-| `mix_enable` | false | ジャイロフィードバックの有効化。IMUのロール・ピッチ角速度を足首角度に重畳する |
-| `mix_gyro_g_roll` | 0.0001 | ロール軸のジャイロゲイン係数。大きくすると横揺れへの応答が強くなる |
-| `mix_gyro_g_pitch` | 0.0002 | ピッチ軸のジャイロゲイン係数。大きくすると前後揺れへの応答が強くなるが、過補正に注意 |
-
-### 停止動作
-
-| パラメータ | デフォルト | 説明 |
-|---|---|---|
-| `smooth_stop` | false | True: 停止時に自動で1歩追加してその場足踏みへ移行 |
-
----
-
-## リンクパラメータ解説
-
-`linkparam.json` は脚IK、腕IK、ZMP推定で使用するロボット寸法をまとめた設定ファイルです。Paramsタブ/MCPの `get_params_text` では脚制御用の `LinkParams` が表示され、腕IKとZMP推定では同じJSONから追加の腕・足裏寸法も読み込みます。
-
-### 脚IK・歩行制御
-
-| パラメータ | 説明 |
-|---|---|
-| `HIP_OFFSET_Y` | 腰中心から股関節ロール軸までのY方向オフセット |
-| `THIGH_LENGTH` | 太ももの長さ |
-| `SHANK_LENGTH` | すねの長さ |
-| `ANKLE_LENGTH` | 足首リンク長 |
-| `FOOT_OFFSET_Z` | 足首ロール軸から足裏までのZ方向オフセット |
-| `FOOT_OFFSET_Y` | 足首ロール軸から足裏中心までのY方向オフセット |
-| `SHORTEN_LEG_LENGTH` | 立位姿勢で脚を短縮する量 |
-
-### ZMP推定
-
-| パラメータ | 説明 |
-|---|---|
-| `FOOT_HALF_LEN` | 足裏支持多角形の前後半長 |
-| `FOOT_HALF_WIDTH` | 足裏支持多角形の左右半幅 |
-
-### 腕IK
-
-| パラメータ | 説明 |
-|---|---|
-| `SHOULDER_OFFSET_X` | waist frameから肩関節までのX方向オフセット |
-| `SHOULDER_OFFSET_Y` | waist frameから肩関節までのY方向オフセット |
-| `SHOULDER_OFFSET_Z` | waist frameから肩関節までのZ方向オフセット |
-| `UPPER_ARM_LENGTH` | 上腕長 |
-| `LOWER_ARM_LENGTH` | 前腕長 |
-
----
-
-## ファイル構成
-
-- `mcp-meridis.py` ... メインサーバー・UI・制御ロジック
-- `redis_receiver.py` ... Redisからのデータ受信
-- `redis_transfer.py` ... Redisへのデータ送信
-- `mrd_walk_ctrl.py` ... 歩行制御ロジック（WalkController、歩行パラメータ管理）
-- `mrd_arm_ctrl.py` ... 腕 IK/FK ライブラリ（両腕の逆運動学・可動域クランプ・Meridim インデックス変換）
-- `mrd_info.py` ... Meridim90配列キー定義とシステム情報
-- `eval_zmp.py` ... センサレス ZMP 評価ライブラリ（ZMPEstimator クラス）
-- `redis_logger.py` ... PADボタントリガによるRedisデータロガー（`log/logs-*.csv` に保存）
-- `redis_plotter2.py` ... 関節角度・足先位置・ZMP のリアルタイム可視化
-- `tools/estimate_walk_params.py` ... 前進歩行ログから歩容パラメータを推定し、`log/walkparam_est_*.json` に保存
-- `tools/compare_gait_stability.py` ... 2つの歩行ログから姿勢安定性を比較し、`report/gait_stability_compare.png` を出力
-- `tools/plot_imu_compare.py` ... `log/buf_input-simulator.csv` と `log/buf_input-real.csv` のIMU比較グラフを出力
-- `tools/plot_imu_compare_gyrofeedback.py` ... ジャイロフィードバックなし/ありの実機IMUログを比較
-- `tools/plot_imu_compare_gyro_split.py` ... 単一ジャイロゲインとRoll/Pitch独立ゲインのIMUログを比較
-- `walkparam.json` ... 歩行パラメータの初期値
-- `linkparam.json` ... 脚・足裏・腕・頭部のリンク長/オフセットパラメータ（実機寸法に合わせて調整）
-- `README.md` ... Quick Start ガイド
-- `README_advance.md` ... このファイル（詳細操作ガイド）
