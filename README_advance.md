@@ -1,4 +1,4 @@
-# mcp-meridis 詳細操作ガイド（執筆中）
+# mcp-meridis 詳細操作ガイド
 
 Quick Start は [README.md](README.md) を参照してください。
 
