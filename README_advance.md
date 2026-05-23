@@ -449,8 +449,8 @@ python tools/compare_gait_stability.py --base log/logs-before.csv --new log/logs
 | スクリプト | 入力 | 出力 |
 |---|---|---|
 | `tools/plot_imu_compare.py` | `log/buf_input-simulator.csv`, `log/buf_input-real.csv` | `report/imu_compare_sim_vs_real.png` |
-| `tools/plot_imu_compare_gyrofeedback.py` | `log/buf_input-real.csv`, `log/buf_input-real-jyrofeedback.csv` | `report/imu_compare_real_vs_gyrofeedback.png` |
-| `tools/plot_imu_compare_gyro_split.py` | `log/buf_input-real-jyrofeedback.csv`, `log/buf_input-real-gyro-independent.csv` | `report/imu_compare_gyro_single_vs_split.png` |
+| `tools/plot_imu_compare_gyrofeedback.py` | `log/buf_input-real.csv`, `log/buf_input-real-gyrofeedback.csv` | `report/imu_compare_real_vs_gyrofeedback.png` |
+| `tools/plot_imu_compare_gyro_split.py` | `log/buf_input-real-gyrofeedback.csv`, `log/buf_input-real-gyro-independent.csv` | `report/imu_compare_gyro_single_vs_split.png` |
 
 ---
 
