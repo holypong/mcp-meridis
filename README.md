@@ -97,6 +97,9 @@ Redis list 'meridis_ai_pub' already exists.
 ![mcp-meridis_](image/mcp-meridis-control.png)
 
 
+先ほどの起動時のログ内の、SSEアクセスポイント`http://127.0.0.1:7860/gradio_api/mcp/sse`は、MCPサーバーとして利用するときに使用します。
+
+
 ### 終了
 
 ターミナル上で CTRL+C で終了してください。
@@ -134,57 +137,56 @@ merimujoco上のヒューマノイドが、
 
 ### Quick Start 4 : 歩行の状態を確認する
 
+歩行中・停止中に[Status]ボタンを繰り返し押すと、状態遷移や姿勢に関する内部情報を取得できます。
 ![home_idle](image/mcp-meridis-003.png)
 
 ---
 
-## Web UIの使い方
+### Quick Start 5 : AIチャットからMCPサーバー経由でロボットを制御する
 
-http://localhost:7860 をブラウザで開き、各タブからロボットを操作できます。
+mcp-meridis は MCPサーバーとして動作します。
 
-### Controlタブ
+ここでは`Claude desktop`のMCPサーバーの設定を簡単に説明します。
+詳しくは公式サイト`https://claude.com`をご覧ください。
 
-Home/Idle/Walk/Stop/Sysreset/Status ボタンで制御・状態確認が可能です。
 
-- **Home**: 全関節をゼロ位置（ホーム姿勢）に移行  
-- **Idle**: 歩行直前の立位姿勢に移行  
-- **Walk**: 歩行開始（Duration 欄で歩行時間を秒単位で指定可能）  
-- **Stop**: 歩行停止（その場足踏み経由で安全停止、`smooth_stop` 設定で動作変更可能）  
-- **Sysreset**: システムリセット信号送信  
-- **Status**: ロボット状態表示（状態/時間/歩行段階/IMU情報/転倒判定）
+### 1) Claude Desktop をインストール
 
-![control](image/mcp-meridis-control.png)
+Claude Desktop をインストールして起動します。
+https://claude.com/download
 
-### Paramsタブ
+### 2) Node.js をインストール
 
-[メモリを取得] で現在値を読み出し、編集後に [メモリを設定] で一括反映します。  
-[初期設定を取得] で JSON 初期値を表示（反映には [メモリを設定] が必要）。
+`mcp-remote` を使うために Node.js が必要です。未インストールの場合は [nodejs.org](https://nodejs.org/) からインストールしてください。
 
-![params](image/mcp-meridis-params.png)
 
-> その他のタブ（Redis / InputBuf / OutputBuf / GetKeyIndex / SysInfo / Arm / VLA）の詳細は [README_advance.md](README_advance.md) を参照してください。
+### 3) mcp-meridis を起動
 
----
+別ターミナルで以下を実行します。
 
-## AIエージェントとの連携（MCPサーバー機能）
-
-mcp-meridis は起動するだけで MCPサーバーとしても動作します。  
-Claude Desktop や Claude Code を接続することで、Web UI と同じ操作を自然言語のプロンプトで実行できます。
-
-SSE エンドポイント:
-```
-http://127.0.0.1:7860/gradio_api/mcp/sse
+```bash
+python mcp-meridis.py
 ```
 
-### Claude Desktop での接続
+起動ログに次が出ることを確認します。
+
+```text
+🔨 MCP server (using SSE) running at: http://127.0.0.1:7860/gradio_api/mcp/sse
+```
+
+### 4) Claude Desktop に MCP 設定を追加
 
 1. Claude Desktop を起動する
 2. メニューバーの **「ファイル」→「設定」**（macOS は **「Claude」→「Settings...」**）を開く
-3. 左メニューの **「開発者」** を選択する
-4. **「設定を編集」** ボタンをクリックする（`claude_desktop_config.json` がエディタで開く）
-5. 下記の JSON を追加して保存する
-6. Claude Desktop を**再起動**する
 
+![claudedesktop-menu](image/claudedesktop-menu.png)
+
+3. 左メニューの **「開発者」** を選択する
+
+![claudedesktop-setting](image/claudedesktop-settings.png)
+
+4. **「設定を編集」** をクリックし、`claude_desktop_config.json` を開く
+5. 下記を追加して保存する
 ```json
 {
   "mcpServers": {
@@ -198,34 +200,23 @@ http://127.0.0.1:7860/gradio_api/mcp/sse
   }
 }
 ```
+6. メニューバーの **「ファイル」→「終了」** で閉じる。
+7. Claude Desktop を**再起動**する。
+8. メニューバーの **「ファイル」→「設定」**（macOS は **「Claude」→「Settings...」**）を開く
 
-> `mcp-remote` を使うには Node.js が必要です。未インストールの場合は [nodejs.org](https://nodejs.org/) からインストールしてください。
+![claudedesktop-menu](image/claudedesktop-menu.png)
+9. 左メニューの **「開発者」** を選択する
+このとき、`mcp-meridis`が`running`になっていれば成功
 
-> 既に `mcpServers` キーが存在する場合は、`"mcp-meridis": { ... }` のブロックだけを既存の `mcpServers` 内に追記してください。
+![claudedesktop-setting](image/claudedesktop-settings.png)
 
-接続が成功すると、チャット画面のツールアイコンに `mcp-meridis` のツール群が表示されます。
 
 ![claudedesktop](image/claudedesktop-mcp.png)
 
-### Claude Code（CLI）での接続
+### 5) AIチャットでロボットを動かす
 
-![claudecode](image/claudecode-mcp.png)
-
-Claude Code を起動しているターミナルで以下を実行します。
-
-```bash
-claude mcp add --transport sse mcp-meridis http://127.0.0.1:7860/gradio_api/mcp/sse
-```
-
-追加後、`/mcp` コマンドで接続状態を確認できます。
-
-![claudecode](image/claudecode-mcplist.png)
-
-**設定手順がわからなければ、Claude Code 自身に依頼するとやってくれます。**
-
-> ```
-> mcp-meridis の MCP サーバーを http://127.0.0.1:7860/gradio_api/mcp/sse で SSE 接続として登録してください
-> ```
+以下のプロンプトを打ち込んでください。
+merimujo上のヒューマノイドが反応したら成功です。
 
 ### 基本プロンプト例
 
@@ -239,17 +230,68 @@ claude mcp add --transport sse mcp-meridis http://127.0.0.1:7860/gradio_api/mcp/
 | ロボットの状態を確認してください | 歩行状態・時間・IMU・転倒判定などを表示 |
 | システムリセットを送信してください | リセット信号を送信してシステムを初期化 |
 
+### うまく接続できないとき
+
+- `python mcp-meridis.py` が起動したままか確認する
+- SSE エンドポイントが `http://127.0.0.1:7860/gradio_api/mcp/sse` になっているか確認する
+- `claude_desktop_config.json` の JSON 構文（カンマや波括弧）を確認する
+- Node.js インストール後に Claude Desktop を再起動する
+
+
+---
+
+### Quick Start 6 : Claude CodeからMCPサーバー経由でロボットを制御する（オプション）
+
+Claude Code でもMCPサーバーを使用できます
+
+(Claude desktopからのロボット制御で目的を達成できているならこの章は不要です)
+
+### 1) Claude Code をインストール
+
+Claude Code をインストールして起動します。
+https://code.claude.com/docs/ja/quickstart
+
+### 2) mcp-meridis を起動
+
+別ターミナルで以下を実行します。
+
+```bash
+python mcp-meridis.py
+```
+
+起動ログに次が出ることを確認します。
+
+```text
+🔨 MCP server (using SSE) running at: http://127.0.0.1:7860/gradio_api/mcp/sse
+```
+
+### 3) Claude Code に MCP 設定を追加
+
+![claudecode](image/claudecode-mcp.png)
+
+Claude Code を起動しているターミナルで以下を実行してください
+
+```bash
+claude mcp add --transport sse mcp-meridis http://127.0.0.1:7860/gradio_api/mcp/sse
+```
+
+追加後、`/mcp` コマンドで接続状態を確認できます。`connected`であれば成功です。
+
+![claudecode](image/claudecode-mcplist.png)
+
+**設定手順がわからない場合、Claude Code に以下のように依頼するとやってくれます。**
+
+> ```
+> mcp-meridis の MCP サーバーを http://127.0.0.1:7860/gradio_api/mcp/sse で SSE 接続として登録してください
+> ```
+
+
+### 4) AIチャットでロボットを動かす
+
+以下のプロンプトを打ち込んでください。 merimujo上のヒューマノイドが反応したら成功です。
+
 ---
 
 ## 詳細ドキュメント
 
 より詳しい設定・操作方法は [README_advance.md](README_advance.md) を参照してください。
-
-- コマンドオプション（`--redis` / `--walkparam`）
-- シミュレーション・実機との接続設定（redis-sim.json / redis-mgr.json）
-- Web UI 全タブの詳細（Redis / InputBuf / OutputBuf / GetKeyIndex / SysInfo / Arm / VLA）
-- ファイル構成
-- MCP サーバー機能 全一覧（34ツール）
-- プロンプト例（パラメータ操作 / 腕IK制御 / VLA制御 / 複合操作 など）
-- データ収集・可視化・解析ツール（redis_logger.py / redis_plotter2.py / tools/）
-- 歩容パラメータ・リンクパラメータの全リファレンス

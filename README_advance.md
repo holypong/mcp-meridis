@@ -120,7 +120,29 @@ flowchart LR
 
 ---
 
-## Web UI 詳細
+## Web UI操作ガイド
+
+ブラウザで `http://localhost:7860`（または `http://127.0.0.1:7860/`）を開くと Web UI が表示されます。ここでは全タブの用途と代表操作をまとめます。
+
+### Controlタブ
+
+Home/Idle/Walk/Stop/Sysreset/Status ボタンで制御・状態確認が可能です。
+
+- **Home**: 全関節をゼロ位置（ホーム姿勢）に移行
+- **Idle**: 歩行直前の立位姿勢に移行
+- **Walk**: 歩行開始（Duration 欄で歩行時間を秒単位で指定可能）
+- **Stop**: 歩行停止（その場足踏み経由で安全停止、`smooth_stop` 設定で動作変更可能）
+- **Sysreset**: システムリセット信号送信
+- **Status**: ロボット状態表示（状態/時間/歩行段階/IMU情報/転倒判定）
+
+![control](image/mcp-meridis-control.png)
+
+### Paramsタブ
+
+[メモリを取得] で現在値を読み出し、編集後に [メモリを設定] で一括反映します。
+[初期設定を取得] で JSON 初期値を表示（反映には [メモリを設定] が必要）。
+
+![params](image/mcp-meridis-params.png)
 
 ### Redisタブ
 
