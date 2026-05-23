@@ -1075,6 +1075,11 @@ def get_vla_task() -> str:
     return vla_task
 
 
+def arm_override_off() -> str:
+    """右腕の Override を無効化する"""
+    return set_arm_cmd("[]")
+
+
 def set_arm_cmd(values_str: str) -> str:
     """右腕コマンドを上書きする [肩P, 肩R, 肘Y, 肘P] (deg), JSON 配列形式。
     空配列 [] で override を無効化。
@@ -1272,11 +1277,11 @@ AIエージェントはこの情報を使ってシステムを理解します。
                     vla_set_btn.click(fn=set_vla_task, inputs=vla_task_in, outputs=vla_task_box, api_name="set_vla_task")
                     vla_get_btn.click(fn=get_vla_task, inputs=[], outputs=vla_task_box, api_name="get_vla_task")
                     arm_cmd_btn.click(fn=set_arm_cmd, inputs=arm_cmd_in, outputs=arm_cmd_box, api_name="set_arm_cmd")
-                    arm_off_btn.click(fn=lambda: set_arm_cmd("[]"), inputs=[], outputs=arm_cmd_box)
+                    arm_off_btn.click(fn=arm_override_off, inputs=[], outputs=arm_cmd_box, api_name="arm_override_off")
 
             # タブを開くタイミングでドロップダウンを現在のキーで更新
-            redis_tab.select(fn=lambda: gr.update(value=REDIS_KEY_READ), outputs=redis_key_dropdown)
-            inputbuf_tab.select(fn=lambda: gr.update(value=REDIS_KEY_READ), outputs=inputbuf_key_dropdown)
+            redis_tab.select(fn=lambda: gr.update(value=REDIS_KEY_READ), outputs=redis_key_dropdown, api_name=False)
+            inputbuf_tab.select(fn=lambda: gr.update(value=REDIS_KEY_READ), outputs=inputbuf_key_dropdown, api_name=False)
 
         # Gradioアプリを起動
         #demo.launch(server_name="0.0.0.0", server_port=7860)

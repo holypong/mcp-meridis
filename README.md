@@ -212,19 +212,34 @@ python mcp-meridis.py
 ![claudedesktop-setting](image/claudedesktop-settings.png)
 
 
-![claudedesktop](image/claudedesktop-mcp.png)
 
 ### 5) AIチャットでロボットを動かす
 
 以下のプロンプトを打ち込んでください。
-merimujoco上のヒューマノイドが反応したら成功です。
+
+![claudedesktop_robot_status_check](image/claudedesktop_robot_status_check.png)
+
+**[常に許可]ボタンが表示される場合があるので押下してください**  
+ロボットの状態が表示されます。
+
+![claudedesktop_robot_status](image/claudedesktop_robot_status.png)
+
+
+「ロボットを歩かせてください」と指示したとき、merimujoco上のヒューマノイドが反応したら成功です。
+
+
+![claudedesktop_walking](image/claudedesktop_walking.png)
+
+
+
 
 ### 基本プロンプト例
 
 | プロンプト例 | 期待効果 |
 |---|---|
-| ロボットを歩かせてください | デフォルト時間で歩行開始 |
-| 5秒間歩かせてください | 5秒間歩行後に自動停止 |
+| ロボットの状態を教えて | ロボットの状態を表示 |
+| ロボットを歩かせてください | 歩行開始（デフォルト5秒） |
+| 3秒間歩かせてください | 3秒間歩行後に自動停止 |
 | ロボットを停止してください | その場足踏みを経由して安全に停止 |
 | Idleポジションをとってください | 歩行直前の立位姿勢へ移行 |
 | Homeポジションをとってください | 全関節をゼロ位置（ホーム姿勢）へ移行 |
@@ -290,7 +305,7 @@ claude mcp add --transport sse mcp-meridis http://127.0.0.1:7860/gradio_api/mcp/
 
 ### 4) AIチャットでロボットを動かす
 
-以下のプロンプトを打ち込んでください。 merimujoco上のヒューマノイドが反応したら成功です。
+Quick Start 5 と同様にプロンプトを打ち込んでください。 merimujoco上のヒューマノイドが反応したら成功です。
 
 ---
 
