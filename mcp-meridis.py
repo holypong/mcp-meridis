@@ -1223,31 +1223,6 @@ def main():
                     key_box = gr.Textbox(label="MeridimKeyParams", lines=30)
                     key_btn.click(fn=getmrdkey, inputs=[], outputs=key_box)
 
-                with gr.Tab("Arm"):
-                    gr.Markdown("### 腕 IK 制御\n目標手先位置 [m] (waist frame) を x,y,z 形式で入力して設定します。取得で両腕の手先位置と関節角を読み込みます。")
-                    arm_get_btn = gr.Button("取得")
-                    with gr.Row():
-                        with gr.Column():
-                            gr.Markdown("#### 右腕")
-                            with gr.Row():
-                                arm_set_btn  = gr.Button("設定")
-                                arm_prep_btn = gr.Button("準備ポーズ", variant="secondary")
-                            r_arm_xyz = gr.Textbox(label="右手 X,Y,Z [m]（waist frame）", placeholder="0.10,-0.10,0.065")
-                            r_arm_result = gr.Textbox(label="結果（右腕）", lines=8)
-                        with gr.Column():
-                            gr.Markdown("#### 左腕")
-                            with gr.Row():
-                                l_arm_set_btn  = gr.Button("設定")
-                                l_arm_prep_btn = gr.Button("準備ポーズ", variant="secondary")
-                            l_arm_xyz = gr.Textbox(label="左手 X,Y,Z [m]（waist frame）", placeholder="0.10,0.10,0.065")
-                            l_arm_result = gr.Textbox(label="結果（左腕）", lines=8)
-                    arm_get_btn.click(fn=arm_get_state, inputs=[], outputs=[r_arm_result, l_arm_result, r_arm_xyz, l_arm_xyz])
-                    arm_set_btn.click(fn=arm_set_position, inputs=[r_arm_xyz], outputs=r_arm_result)
-                    arm_prep_btn.click(fn=arm_prep_pose, inputs=[], outputs=r_arm_result)
-                    l_arm_set_btn.click(fn=left_arm_set_position, inputs=[l_arm_xyz], outputs=l_arm_result)
-                    l_arm_prep_btn.click(fn=left_arm_prep_pose, inputs=[], outputs=l_arm_result)
-                    reset_btn.click(fn=system_reset, inputs=[], outputs=[result_out, r_arm_xyz, l_arm_xyz])
-
                 with gr.Tab("SysInfo"):
                     gr.Markdown("""### システム情報
 このタブでは、Meridim90のキーインデックス、歩行パラメータ、リンクパラメータ、使用可能なスキルの一覧を一括で取得できます。
@@ -1255,6 +1230,31 @@ AIエージェントはこの情報を使ってシステムを理解します。
                     sysinfo_btn = gr.Button("情報取得")
                     sysinfo_box = gr.Textbox(label="System Info", lines=50)
                     sysinfo_btn.click(fn=get_system_info, inputs=[], outputs=sysinfo_box)
+
+                with gr.Tab("Arm"):
+                    gr.Markdown("### 腕 IK 制御（3自由度）\n目標手先位置 [m]  を x,y,z 形式で入力して「設定」すると関節が動きます。 \n「取得」で両腕の手先位置と関節角を読み込みます。")
+                    arm_get_btn = gr.Button("取得")
+                    with gr.Row():
+                        with gr.Column():
+                            gr.Markdown("#### 右腕")
+                            with gr.Row():
+                                arm_set_btn  = gr.Button("設定")
+                                arm_prep_btn = gr.Button("準備ポーズ（肘90度）", variant="secondary")
+                            r_arm_xyz = gr.Textbox(label="右手 X,Y,Z [m]（腰中心から）", placeholder="0.10,-0.10,0.065")
+                            r_arm_result = gr.Textbox(label="結果（右腕）", lines=8)
+                        with gr.Column():
+                            gr.Markdown("#### 左腕")
+                            with gr.Row():
+                                l_arm_set_btn  = gr.Button("設定")
+                                l_arm_prep_btn = gr.Button("準備ポーズ（肘90度）", variant="secondary")
+                            l_arm_xyz = gr.Textbox(label="左手 X,Y,Z [m]（腰中心から）", placeholder="0.10,0.10,0.065")
+                            l_arm_result = gr.Textbox(label="結果（左腕）", lines=8)
+                    arm_get_btn.click(fn=arm_get_state, inputs=[], outputs=[r_arm_result, l_arm_result, r_arm_xyz, l_arm_xyz])
+                    arm_set_btn.click(fn=arm_set_position, inputs=[r_arm_xyz], outputs=r_arm_result)
+                    arm_prep_btn.click(fn=arm_prep_pose, inputs=[], outputs=r_arm_result)
+                    l_arm_set_btn.click(fn=left_arm_set_position, inputs=[l_arm_xyz], outputs=l_arm_result)
+                    l_arm_prep_btn.click(fn=left_arm_prep_pose, inputs=[], outputs=l_arm_result)
+                    reset_btn.click(fn=system_reset, inputs=[], outputs=[result_out, r_arm_xyz, l_arm_xyz])
 
                 with gr.Tab("VLA"):
                     gr.Markdown("### VLA 右腕制御\n`vla_arm_bridge.py` 連携ツール。タスク設定と右腕コマンド上書きを管理します。")
