@@ -73,7 +73,7 @@ python mcp-meridis.py --redis redis-mgr.json
 
 - meridisのインストールディレクトリで以下を実行する
 ```bash
-python meridis_manager.py --mgr mgr_mcp2real.json --foot true
+python meridis_manager.py --mgr mgr_ai2real.json --foot true
 ```
 
 **設定ファイルの内容**
