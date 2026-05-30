@@ -149,7 +149,7 @@ merimujoco上のヒューマノイドの立位姿勢を、ホームポジショ�
 [Home] ボタンを押下すると、膝を伸ばした直立したホームポジション（左図）になります。  
 [Idle] ボタンを押下すると、膝を少し曲げた歩行直前の待機姿勢（右図）にしてください。
 
-![home_idle](image/mcp-meridis-002.png)
+![home_idle](image/mcp-meridis-standingpose.png)
 
 ---
 
