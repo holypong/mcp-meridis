@@ -10,7 +10,7 @@ mcp-meridisは、ロボットの制御（主に歩行）・パラメータ管理
 - **MCPサーバー** としても動作するので、AI エージェント（Claude 等）からの自然言語指示にも対応しています。
 - 複数のプログラム間でデータを高速に交換（ブリッジ）する目的で **Redisサーバー** を使用しています。
 
-![mcp-meridis_merimujoco](image/mcp-meridis-001.png)
+![mcp-meridis_merimujoco](image/mcp-meridis-walk.png)
 
 ## 主な機能
 
@@ -159,7 +159,7 @@ merimujoco上のヒューマノイドの立位姿勢を、ホームポジショ�
 すばやく停止したい場合は [Stop] ボタンを押してください。  
 最初からやり直したい場合は [Sysreset] ボタンを押してください。
 
-![mcp-meridis_merimujoco](image/mcp-meridis-001.png)
+![mcp-meridis_merimujoco](image/mcp-meridis-walk.png)
 ---
 
 ### Quick Start 4 : 歩行の状態を確認する
