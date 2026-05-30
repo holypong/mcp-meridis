@@ -26,7 +26,7 @@ python mcp-meridis.py --redis redis-sim.json
 
 - merimujoco のインストールディレクトリで以下を実行する
 ```bash
-python merimujoco.py --redis redis-mcp.json
+python merimujoco.py --redis redis-ai.json
 ```
 
 **設定ファイルの内容**
@@ -428,6 +428,7 @@ MCP ツール `set_params_text` で実行中に変更でき、`get_params_text` 
 - メイン
   - `mcp-meridis.py` ... メインサーバー・UI・制御ロジック
   - `walkparam.json` ... 歩行パラメータの初期値
+  - `walkparam-fast.json` ... 高速歩行用の歩行パラメータプリセット
   - `linkparam.json` ... 脚・足裏・腕・頭部のリンク長/オフセットパラメータ（実機寸法に合わせて調整）
 
 - ライブラリ
