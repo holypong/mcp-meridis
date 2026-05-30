@@ -8,11 +8,13 @@ wheels/
 reference/
 log/
 report/
+tools/
 .gradio/
 .mcp.json
 CLAUDE.md
 *.csv
 AGENTS.md
+
 
 # Virtual environments
 .venv

@@ -441,23 +441,18 @@ MCP ツール `set_params_text` で実行中に変更でき、`get_params_text` 
   - `redis_logger.py` ... PADボタントリガによるRedisデータロガー（`log/logs-*.csv` に保存）
   - `redis_plotter2.py` ... 関節角度・足先位置・ZMP のリアルタイム可視化
     - `eval_zmp.py` ... センサレス ZMP 評価ライブラリ（ZMPEstimator クラス）
-  - `tools/estimate_walk_params.py` ... 前進歩行ログから歩容パラメータを推定し、`log/walkparam_est_*.json` に保存
-  - `tools/compare_gait_stability.py` ... 2つの歩行ログから姿勢安定性を比較し、`report/gait_stability_compare.png` を出力
-  - `tools/plot_imu_compare.py` ... `log/buf_input-simulator.csv` と `log/buf_input-real.csv` のIMU比較グラフを出力
-  - `tools/plot_imu_compare_gyrofeedback.py` ... ジャイロフィードバックなし/ありの実機IMUログを比較
-  - `tools/plot_imu_compare_gyro_split.py` ... 単一ジャイロゲインとRoll/Pitch独立ゲインのIMUログを比較
 
 ---
 
 ## 追加パッケージのインストール
 
-解析・可視化ツール（redis_plotter2.py / tools/）を使う場合は、描画・表計算・フィッティング用ライブラリもインストールしてください。
+`redis_plotter2.py` を使う場合は、描画・表計算・フィッティング用ライブラリもインストールしてください。
 
 ```bash
 pip install pandas matplotlib scipy
 ```
----
 
+---
 
 ## データ収集ツール：redis_logger.py
 
@@ -523,71 +518,3 @@ python redis_plotter2.py --window 10 --width 12 --height 8 # 表示ウィンド�
 | `joint` | ベースリンク（IMU）・右脚・左脚の関節角度を時系列グラフで表示 |
 | `foot` | 左右の足先位置（X/Z）を時系列グラフで表示 |
 | `zmp` | PAD状態・ZMP XY軌跡・ZMP時系列・支持多角形マージン・Roll+Pitchを表示（`eval_zmp.py` が必要） |
-
----
-
-## 歩容パラメータ推定ツール：tools/estimate_walk_params.py
-
-`redis_logger.py` で保存した前進歩行ログ（`log/logs-*.csv`）から、`walkparam.json` と同形式の推定パラメータJSONを生成します。
-
-### 使い方
-
-```bash
-python tools/estimate_walk_params.py
-python tools/estimate_walk_params.py --log log/logs-202604190935.csv
-python tools/estimate_walk_params.py --walkparam walkparam.json --out log/walkparam_est_test.json
-```
-
-### オプション
-
-| オプション | デフォルト | 説明 |
-|---|---|---|
-| `--log` | `log/` 内の最新 `logs-*.csv` | 入力CSVパス |
-| `--walkparam` | `walkparam.json` | ベースとして読み込む歩行パラメータJSON |
-| `--out` | `log/walkparam_est_YYYYMMDDHHMM.json` | 出力JSONパス |
-
-### 推定対象
-
-| パラメータ | 推定元 |
-|---|---|
-| `forward_stride` | 左右足先X位置の振幅 |
-| `foot_lift` | 左右足先Z位置の最大値 |
-| `hip_swing` | 左右股ロール角から逆算した横スイング量 |
-| `forward_lean_angle` | 大腿・膝・足首ピッチ角の幾何関係 |
-| `cycle_duration` | 足先X軌道の周期推定 |
-| `swing_ratio` | 足先Zが上がっている期間比率 |
-
----
-
-## 歩容安定性比較ツール：tools/compare_gait_stability.py
-
-2つの歩行ログを比較し、姿勢角・ジャイロ・加速度の標準偏差やpeak-to-peakをコンソールに表示し、比較グラフを `report/` に保存します。
-
-### 使い方
-
-```bash
-python tools/compare_gait_stability.py
-python tools/compare_gait_stability.py --base log/logs-before.csv --new log/logs-after.csv
-python tools/compare_gait_stability.py --base log/logs-before.csv --new log/logs-after.csv --out report/gait_compare.png
-```
-
-### オプション
-
-| オプション | デフォルト | 説明 |
-|---|---|---|
-| `--base` | `log/` 内の最新2件の古い方 | 比較元ログCSV |
-| `--new` | `log/` 内の最新2件の新しい方 | 比較先ログCSV |
-| `--out` | `report/gait_stability_compare.png` | 出力グラフパス |
-
----
-
-## IMU比較グラフツール：tools/plot_imu_compare*.py
-
-固定ファイル名のIMUログを読み込み、加速度・ジャイロ・姿勢角の比較グラフを `report/` に保存します。
-
-| スクリプト | 入力 | 出力 |
-|---|---|---|
-| `tools/plot_imu_compare.py` | `log/buf_input-simulator.csv`, `log/buf_input-real.csv` | `report/imu_compare_sim_vs_real.png` |
-| `tools/plot_imu_compare_gyrofeedback.py` | `log/buf_input-real.csv`, `log/buf_input-real-gyrofeedback.csv` | `report/imu_compare_real_vs_gyrofeedback.png` |
-| `tools/plot_imu_compare_gyro_split.py` | `log/buf_input-real-gyrofeedback.csv`, `log/buf_input-real-gyro-independent.csv` | `report/imu_compare_gyro_single_vs_split.png` |
-
