@@ -1,7 +1,7 @@
 [project]
-name = "letter-counter"
+name = "mcp-meridis"
 version = "0.1.0"
-description = "Add your description here"
+description = "MCP server and Web UI for Meridian humanoid robot control"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
