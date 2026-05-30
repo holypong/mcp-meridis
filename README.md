@@ -165,7 +165,7 @@ merimujoco上のヒューマノイドの立位姿勢を、ホームポジショ�
 ### Quick Start 4 : 歩行の状態を確認する
 
 歩行中・停止中に[Status]ボタンを繰り返し押すと、状態遷移や姿勢に関する内部情報を取得できます。
-![home_idle](image/mcp-meridis-003.png)
+![home_idle](image/mcp-meridis-getstatus.png)
 
 ---
 
