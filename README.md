@@ -1,41 +1,42 @@
 # mcp-meridis
 
+
 ## 概要
 
 本プログラム（mcp-meridis）は Meridian プロジェクトのエコシステム上で動作します。
 
-mcp-meridisは、ロボットの制御（主に歩行）・パラメータ管理・状態監視・ログ分析を行うための Python 製 Web アプリです。  
-- **Gradio による Web UI** のボタン操作で、ロボットを直感的に制御できます
-- **MCPサーバー** として動作し、AI エージェント（Claude 等）からの自然言語制御にも対応しています。
-- 複数プログラム間でデータを高速にブリッジする目的で **Redisサーバー** を使用します。
+mcp-meridisは、ロボットの制御（主に歩行）・パラメータ管理・状態監視・ログ分析を行うための Pythonベースの Web アプリです。  
+- **Web UI** のボタン操作で、ロボットを直感的に制御できます。
+- **MCPサーバー** としても動作するので、AI エージェント（Claude 等）からの自然言語指示にも対応しています。
+- 複数のプログラム間でデータを高速に交換（ブリッジ）する目的で **Redisサーバー** を使用しています。
 
 ![mcp-meridis_merimujoco](image/mcp-meridis-001.png)
 
 ## 主な機能
 
-- **脚IKに基づく歩行制御（Home / Idle / Walk / Stop）**  
-  ボタン一つでヒューマノイドの立位姿勢や歩行の開始停止を制御します。バックグラウンドスレッド(100Hz)で足の軌道に基づいた逆運動学計算でヒューマノイドの足の関節角度を自動計算し制御コマンドを送信します。
+- **脚の逆運動学(IK)に基づく歩行制御**  
+  Web UI上の[Home] [Idle] [Start] [Stop] などのボタンを押すだけで、ヒューマノイドの立位姿勢の変更や歩行の開始・停止を制御します。バックグラウンドスレッド(100Hz)で両足の軌道を逆運動学計算を行い、ヒューマノイド脚の各関節角度の制御コマンドを送信します。
 
-- **腕IKに基づく姿勢制御**  
-  手先の目標座標 `x,y,z`（腰座標系、単位 m）を入力すると、逆運動学で肩 P / 肩 R / 肘 P のヒューマノイドの腕の関節角度を自動計算して制御コマンドを送信します。
+- **腕の逆運動学(IK)に基づく姿勢制御**  
+  手先の目標座標 `x,y,z`（腰座標系、単位 m）を入力すると逆運動学を行い、肩 P / 肩 R / 肘 P のヒューマノイド腕の各関節角度の制御コマンドを送信します。
 
 - **MCP サーバー対応**  
-  MCPサーバー（Model Context Protocol Server）に対応することで、AIが外部のプログラムと接続するのを支援します。Claude Desktop / Claude Code などのAIチャットから、自然言語のプロンプトでヒューマノイドの制御・状態監視・ログ取得できます。
+  MCPサーバー（Model Context Protocol Server）に対応することで、AIがシミュレータロボット・ロボット実機に接続するのをサポートします。Claude Desktop / Claude Code などのAIチャットから、自然言語指示でヒューマノイドを制御・状態監視・ログ取得できます。
 
 - **状態モニタリング**  
   [Status] ボタンを押下すると、歩行の段階（内部の状態遷移）・経過時間・IMU 姿勢角・転倒判定などを確認できます。
 
 - **歩行パラメータのライブ編集**  
-  足の歩幅・持上げ量・腰の横スイング・歩行周期・前傾角などの歩行パラメータを Web UI 上でテキスト編集して[メモリを設定] ボタンを押すと、次フレームから変更したパラメータが即時反映されます。
+  足の歩幅・持上げ量・腰の横スイング・歩行周期・前傾角などの歩行パラメータを Web UI 上でテキスト編集して[メモリを設定] ボタンを押すことこで、変更したパラメータが即時反映されます。
 
 - **歩行データの記録と分析**  
-  歩行中に送受信した Meridim 配列（最大 10,000 フレーム）をバッファに蓄積し、CSV に書き出せます。別の分析ツールで、関節角度のリアルタイム可視化・ZMP 推定・比較グラフを生成できます。
+  歩行中に送受信した Meridim 配列（最大 10,000 フレーム）をバッファに蓄積しCSVファイルとして書き出せます。別の分析ツールで関節角度のリアルタイム可視化・ZMP 推定・比較グラフを生成できます。
 
 - **データソースの切替**  
   Web UI からモニタ・ログしたいデータソースを切り替え可能です。
 
 - **VLA 腕制御連携**  
-  VLA(Vison-Language-Action)の SmolVLA 推論プロセス と連携して腕制御が可能です。 ただし、SmolVLA を利用したプログラムは 2026.05時点では未公開です。
+  VLA(Vison-Language-Action)の SmolVLA 推論プロセス と連携して腕制御が可能です。※SmolVLA を利用したプログラムは 2026.05時点では未公開です。
 
 
 ### Meridian プロジェクトのエコシステム
@@ -46,6 +47,27 @@ mcp-meridisは、ロボットの制御（主に歩行）・パラメータ管理
 > | [meridis](https://github.com/holypong/meridis) | holypong | Redis を介してシミュレータ・実機ロボット・Web アプリを接続するデータブリッジ |
 > | [merimujoco](https://github.com/holypong/merimujoco) | holypong | MuJoCo 物理シミュレーション。meridis 経由で Sim2Real / Real2Sim を提供 |
 > | [mcp-meridis](https://github.com/holypong/mcp-meridis) | holypong | Web UI でロボットを操作する Python アプリ。MCPサーバーとして AI エージェントとの連携にも対応 |
+
+
+
+## 目次
+
+- [概要](#概要)
+- [主な機能](#主な機能)
+  - [Meridian プロジェクトのエコシステム](#meridian-プロジェクトのエコシステム)
+- [利用方法](#利用方法)
+  - [前提条件](#前提条件)
+  - [必要なパッケージのインストール](#必要なパッケージのインストール)
+  - [起動](#起動)
+  - [終了](#終了)
+- [Quick Start](#quick-start)
+  - [Quick Start 1 : 状態をリセットする](#quick-start-1--状態をリセットする)
+  - [Quick Start 2 : 立位姿勢を調整する](#quick-start-2--立位姿勢を調整する)
+  - [Quick Start 3 : 歩行を開始・停止する](#quick-start-3--歩行を開始停止する)
+  - [Quick Start 4 : 歩行の状態を確認する](#quick-start-4--歩行の状態を確認する)
+  - [Quick Start 5 : AIチャットからMCPサーバー経由でロボットを制御する（Claude Desktop編）](#quick-start-5--aiチャットからmcpサーバー経由でロボットを制御するclaude-desktop編)
+  - [Quick Start 6 : AIチャットからMCPサーバー経由でロボットを制御する（Claude Code編）](#quick-start-6--aiチャットからmcpサーバー経由でロボットを制御する-claude-code編)
+- [詳細ドキュメント](#詳細ドキュメント)
 
 ---
 
@@ -108,7 +130,12 @@ Redis list 'meridis_ai_pub' already exists.
 
 ## Quick Start
 
+- ヒューマノイドを Web UI から操作したい場合
+  - Quick Start 1-4 を試してください
+- ヒューマノイドを AIチャット から操作したい場合
+  - Quick Start 5 または 6 を試してください
 
+---
 ### Quick Start 1 : 状態をリセットする
 
 [Sysreset] ボタンを押すと、merimujoco のシステム状態をリセットします。  
@@ -116,17 +143,17 @@ Redis list 'meridis_ai_pub' already exists.
 
 ---
 
-### Quick Start 2 : ホームポジションと待機ポジションを行き来する
+### Quick Start 2 : 立位姿勢を調整する
 
-merimujoco上のヒューマノイドの直立姿勢を調整しましょう。
-[Home] ボタンを押下して膝を伸ばした直立したホームポジション（左図）になります。  
-[Idle] ボタンを押下して少し膝を曲げて、歩行直前の待機姿勢（右図）にしてください。
+merimujoco上のヒューマノイドの立位姿勢を、ホームポジションと待機ポジションで切替えましょう。
+[Home] ボタンを押下すると、膝を伸ばした直立したホームポジション（左図）になります。  
+[Idle] ボタンを押下すると、膝を少し曲げた歩行直前の待機姿勢（右図）にしてください。
 
 ![home_idle](image/mcp-meridis-002.png)
 
 ---
 
-### Quick Start 3 : 歩行の開始と停止
+### Quick Start 3 : 歩行を開始・停止する
 
 [Walk] ボタンを押すと merimujoco のヒューマノイドが歩行を開始し、Duration に設定した時間が経過すると自動で停止します。  
 すばやく停止したい場合は [Stop] ボタンを押してください。  
@@ -142,7 +169,7 @@ merimujoco上のヒューマノイドの直立姿勢を調整しましょう。
 
 ---
 
-### Quick Start 5 : AIチャットからMCPサーバー経由でロボットを制御する
+### Quick Start 5 : AIチャットからMCPサーバー経由でロボットを制御する（Claude Desktop編） 
 
 mcp-meridis は MCPサーバーとして動作します。
 
@@ -205,6 +232,7 @@ python mcp-meridis.py
 8. メニューバーの **「ファイル」→「設定」**（macOS は **「Claude」→「Settings...」**）を開く
 
 ![claudedesktop-menu](image/claudedesktop-menu.png)
+
 9. 左メニューの **「開発者」** を選択する
 このとき、`mcp-meridis`が`running`になっていれば成功
 
@@ -245,21 +273,21 @@ python mcp-meridis.py
 | ロボットの状態を確認してください | 歩行状態・時間・IMU・転倒判定などを表示 |
 | システムリセットを送信してください | リセット信号を送信してシステムを初期化 |
 
-### MCPサーバーが接続できないとき
+### トラブルシューティング
 
-- claude desktop がインストールされているか確認する
-- node.js がインストールされているか確認する
-- AIチャット`claude desktop`を起動する前に、`python mcp-meridis.py` が起動されていることを確認する
-- MCPサーバーの起動ログと`claude_desktop_config.json`に記載する SSE エンドポイントが `http://127.0.0.1:7860/gradio_api/mcp/sse` で一致しているかを確認する
-- `claude_desktop_config.json` の JSON 構文（カンマや波括弧）を確認する
+MCPサーバーが接続できないとき
+
+- claude desktop がインストールされているか確認してください
+- node.js がインストールされているか確認してください
+- AIチャット`claude desktop`を起動する前に、`python mcp-meridis.py` が起動されていることを確認してください
+- MCPサーバーの起動ログと`claude_desktop_config.json`に記載する SSE エンドポイントが `http://127.0.0.1:7860/gradio_api/mcp/sse` で一致しているかを確認してください
+- `claude_desktop_config.json` の JSON 構文（カンマや波括弧）を確認してください
 
 ---
 
-### Quick Start 6 : Claude CodeからMCPサーバー経由でロボットを制御する（オプション）
+### Quick Start 6 : AIチャットからMCPサーバー経由でロボットを制御する （Claude code編）
 
-Claude Code でもMCPサーバーを使用できます
-
-(Quick Start 5 の Claude desktopからのロボット制御で目的を達成できているならこの章は不要です)
+本章は、AIチャットを`Claude Desktop`から`Claude Code`に変更したケースの説明です。
 
 ### 1) Claude Code をインストール
 
@@ -304,7 +332,7 @@ claude mcp add --transport sse mcp-meridis http://127.0.0.1:7860/gradio_api/mcp/
 
 ### 4) AIチャットでロボットを動かす
 
-Quick Start 5 と同様にプロンプトを打ち込んでください。 merimujoco上のヒューマノイドが反応したら成功です。
+Quick Start 5 と同様にプロンプトをチャットに打ち込んでください。 merimujoco上のヒューマノイドが反応したら成功です。
 
 ---
 

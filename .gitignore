@@ -12,6 +12,7 @@ report/
 .mcp.json
 CLAUDE.md
 *.csv
+AGENTS.md
 
 # Virtual environments
 .venv
