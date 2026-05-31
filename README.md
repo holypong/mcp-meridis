@@ -10,7 +10,9 @@ mcp-meridisは、ロボットの制御（主に歩行）・パラメータ管理
 - **MCPサーバー** としても動作するので、AI エージェント（Claude 等）からの自然言語指示にも対応しています。
 - 複数のプログラム間でデータを高速に交換（ブリッジ）する目的で **Redisサーバー** を使用しています。
 
-![mcp-meridis_merimujoco](image/mcp-meridis-walk.png)
+[![mcp-meridis_merimujoco](image/mcp-meridis-walk-play.png)](https://www.youtube.com/watch?v=3TW-UL5gDTo&t=3s)
+
+上の画像をクリックするとYoutube動画を再生します
 
 ## 主な機能
 
