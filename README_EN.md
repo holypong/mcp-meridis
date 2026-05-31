@@ -330,7 +330,7 @@ Enter prompts in the chat as in Quick Start 5. The setup is successful if the hu
 
 ## Detailed Documentation
 
-[README_advance_EN.md](README_advance_EN.md) summarizes the following topics:
+[Read the technical specification](README_advance_EN.md) summarizes the following topics:
 
 - Startup options and connection settings for simulation and real robots
 - Operation guide for every Web UI tab
@@ -343,3 +343,8 @@ Enter prompts in the chat as in Quick Start 5. The setup is successful if the hu
 - Background for using Meridian as the base
 - Purpose of making this an MCP server
 - Glossary for physical AI and related terms
+
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

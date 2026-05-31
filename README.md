@@ -342,7 +342,7 @@ Quick Start 5 と同様にプロンプトをチャットに打ち込んでくだ
 
 ## 詳細ドキュメント
 
-[README_advance.md](README_advance.md) では、次の内容をまとめています。
+[技術仕様を読む](README_advance.md) では、次の内容をまとめています。
 
 - 起動オプションと接続設定（シミュレーション/実機）
 - Web UI 全タブの操作ガイド
@@ -354,3 +354,8 @@ Quick Start 5 と同様にプロンプトをチャットに打ち込んでくだ
 - meridian をベースにする背景
 - mcpサーバーにする目的
 - フィジカルAI・エンボディードAIなどの用語集
+
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
