@@ -20,3 +20,11 @@ AGENTS.md
 .venv
 .backup
 .claude
+
+# Credentials and secrets
+.env
+.env.local
+*.pem
+*.key
+*.p12
+credentials.json
