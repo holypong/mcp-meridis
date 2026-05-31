@@ -1,5 +1,7 @@
 # mcp-meridis
 
+[English](README_EN.md) | 日本語
+
 
 ## 概要
 
@@ -347,3 +349,8 @@ Quick Start 5 と同様にプロンプトをチャットに打ち込んでくだ
 - MCPツール一覧と実用プロンプト例
 - ログ収集・可視化・解析ツールの使い方
 - ファイル構成と主要パラメータのリファレンス
+
+[背景・目的・用語集](https://github.com/holypong/meridis/blob/main/README_concept.md)
+- meridian をベースにする背景
+- mcpサーバーにする目的
+- フィジカルAI・エンボディードAIなどの用語集

@@ -1,5 +1,7 @@
 # mcp-meridis 詳細操作ガイド
 
+[English](README_advance_EN.md) | 日本語
+
 Quick Start は [README.md](README.md) を参照してください。
 
 ---
