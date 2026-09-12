@@ -9,13 +9,14 @@ Quick Start は [README.md](README.md) を参照してください。
 ## コマンドとオプション
 
 ```bash
-python mcp-meridis.py --redis REDIS_FILE --walkparam WALKPARAM_FILE
+python mcp-meridis.py --redis REDIS_FILE --walkparam WALKPARAM_FILE --linkparam LINKPARAM_FILE
 ```
 
 | オプション | デフォルト | 説明 |
 |---|---|---|
 | `--redis` | `redis.json` | Redis接続先・キーを記述したJSON設定ファイルを指定します |
 | `--walkparam` | `walkparam.json` | 起動時に読み込む歩行パラメータJSONファイルを指定します |
+| `--linkparam` | `linkparam.json` | 起動時に読み込むリンクパラメータJSONファイルを指定します（未指定時は `linkparam.json` を読みます） |
 
 ---
 

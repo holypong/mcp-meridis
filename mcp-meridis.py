@@ -9,6 +9,9 @@ if __name__ == '__main__' and ('-h' in sys.argv or '--help' in sys.argv):
     parser.add_argument('--walkparam',
                         default='walkparam.json',
                         help='Walk parameter JSON file (default: walkparam.json)')
+    parser.add_argument('--linkparam',
+                        default='linkparam.json',
+                        help='Link parameter JSON file (default: linkparam.json)')
     parser.print_help()
     sys.exit(0)
 
@@ -40,7 +43,7 @@ _arm_params_cache: ArmParams | None = None
 def _get_arm_params() -> ArmParams:
     global _arm_params_cache
     if _arm_params_cache is None:
-        _arm_params_cache = load_arm_params("linkparam.json")
+        _arm_params_cache = load_arm_params(LINKPARAM_FILE)
     return _arm_params_cache
 
 # 20260103 安定版
@@ -170,7 +173,7 @@ def set_params_text(text):
 # JSONファイルから初期設定を読み込んでJSON形式のテキストで返す
 def get_initial_params_text():
     initial_walk = load_walk_params(WALKPARAM_FILE)
-    initial_link_full = load_link_params_full("linkparam.json")
+    initial_link_full = load_link_params_full(LINKPARAM_FILE)
     return json.dumps(
         {"WalkParams": dataclasses.asdict(initial_walk), "LinkParams": initial_link_full},
         indent=2, ensure_ascii=False
@@ -241,7 +244,9 @@ params = load_walk_params(WALKPARAM_FILE)
 # リンク長の定義と脚全体の長さを構造体にまとめる
 # LinkParamsはwalk_ctrlからインポート
 # JSONファイルから読み込み（なければデフォルト値を使用）
-params_link = load_link_params("linkparam.json")
+# 起動時引数で上書きされる（main()参照）。指定がなければ linkparam.json を読む
+LINKPARAM_FILE = "linkparam.json"
+params_link = load_link_params(LINKPARAM_FILE)
 #print(f"Loaded LinkParams: THIGH_LENGTH={params_link.THIGH_LENGTH}, SHANK_LENGTH={params_link.SHANK_LENGTH}")
 
 # linkparam.json の全項目を保持する辞書
@@ -256,7 +261,7 @@ def load_link_params_full(json_path="linkparam.json"):
             print(f"Error loading {json_path}: {e}")
     return {}
 
-link_params_full = load_link_params_full("linkparam.json")
+link_params_full = load_link_params_full(LINKPARAM_FILE)
 
 def get_link_params_display_dict():
     """LinkParamsの表示用辞書を返す。
@@ -838,6 +843,9 @@ def parse_arguments():
     parser.add_argument('--walkparam',
                         default='walkparam.json',
                         help='Walk parameter JSON file (default: walkparam.json)')
+    parser.add_argument('--linkparam',
+                        default='linkparam.json',
+                        help='Link parameter JSON file (default: linkparam.json)')
     return parser.parse_args()
 
 
@@ -1128,6 +1136,7 @@ def set_arm_cmd(values_str: str) -> str:
 def main():
     """メイン関数 - コマンドライン引数を処理してGradioアプリを起動"""
     global receiver, transfer, walk_controller, WALKPARAM_FILE, params
+    global LINKPARAM_FILE, params_link, link_params_full, _arm_params_cache
 
     try:
         # コマンドライン引数を解析
@@ -1138,6 +1147,14 @@ def main():
             WALKPARAM_FILE = args.walkparam
             params = load_walk_params(WALKPARAM_FILE)
             print(f"[Config] WalkParams loaded from '{WALKPARAM_FILE}'")
+
+        # linkparamファイルを引数で上書き（未指定時は linkparam.json をデフォルトで読む）
+        if args.linkparam != LINKPARAM_FILE:
+            LINKPARAM_FILE = args.linkparam
+            params_link = load_link_params(LINKPARAM_FILE)
+            link_params_full = load_link_params_full(LINKPARAM_FILE)
+            _arm_params_cache = None  # 次回参照時にLINKPARAM_FILEから読み直す
+            print(f"[Config] LinkParams loaded from '{LINKPARAM_FILE}'")
 
         # Redis設定をJSONファイルから読み込み
         load_redis_config(args.redis)
@@ -1180,7 +1197,7 @@ def main():
 2. 編集後、[メモリを設定]ボタンで一括反映
    - `walkparam.json` / `walkparam-fast.json` / `linkparam.json` の内容をそのままコピペしても反映可能（キー名からWalk/Linkを自動判定）
 3. [初期設定を取得]で JSON ファイルの初期値を表示（反映するには[メモリを設定]を押す）
-4. 初期設定の読み込み元: `{WALKPARAM_FILE}`
+4. 初期設定の読み込み元: `{WALKPARAM_FILE}` / `{LINKPARAM_FILE}`
 """)
                     with gr.Row():
                         get_btn  = gr.Button("メモリを取得")

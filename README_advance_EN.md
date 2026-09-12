@@ -9,13 +9,14 @@ For the Quick Start guide, see [README_EN.md](README_EN.md).
 ## Commands and Options
 
 ```bash
-python mcp-meridis.py --redis REDIS_FILE --walkparam WALKPARAM_FILE
+python mcp-meridis.py --redis REDIS_FILE --walkparam WALKPARAM_FILE --linkparam LINKPARAM_FILE
 ```
 
 | Option | Default | Description |
 |---|---|---|
 | `--redis` | `redis.json` | Specifies the JSON configuration file that defines the Redis connection and keys |
 | `--walkparam` | `walkparam.json` | Specifies the walking-parameter JSON file loaded at startup |
+| `--linkparam` | `linkparam.json` | Specifies the link-parameter JSON file loaded at startup (defaults to `linkparam.json` when omitted) |
 
 ---
 
