@@ -622,6 +622,12 @@ class Commander:
         for i in range(21, 81, 2):
             out_mrd[i] = round(float(out_mrd[i]) * 100.0, 2)
         with self._output_lock:
+            for index in MELISSA_SERVO_INDICES:
+                previous = self._last_output[index]
+                max_step = JOINT_MAX_SPEED_DEG_S.get(index, _DEFAULT_MAX_SPEED_DEG_S) \
+                           * WALK_JOINT_SPEED_FRACTION * 100.0 / self._loop_hz
+                out_mrd[index] = max(previous - max_step,
+                                     min(previous + max_step, out_mrd[index]))
             self._last_output = out_mrd
 
     def _resolve_motion(self, motion_ref) -> list | None:
@@ -976,12 +982,12 @@ WALK_PARAMS = {
     'phase_offset': 3.141592653589793,
     'init_wait_time': 0.0,
     'landing_period_ratio': 0.10,
-    'weight_shift_duration_ratio': 0.25,
+    'weight_shift_duration_ratio': 0.30,
     'end_of_simulation': 8.0,
-    'cycle_duration': 0.40,
+    'cycle_duration': 0.60,
     'swing_ratio': 0.4,
-    'foot_lift': 0.015,
-    'hip_swing': 0.010,
+    'foot_lift': 0.020,
+    'hip_swing': 0.005,
     'lateral_swing_ratio_1st': 0.8,
     'forward_stride': 0.018,
     'duration': 5.0,
@@ -1015,6 +1021,7 @@ WALK_STRIDE_RATIO = 0.50
 MAX_FWD_STRIDE = FOOT_SLIDE_MAX_FWD * WALK_STRIDE_RATIO
 MAX_TURN_STRIDE_DEG = 30.0
 MAX_ARM_PITCH_DEG = 15.0
+WALK_JOINT_SPEED_FRACTION = 1.0
 
 IDX_L_SHOULDER_PITCH = 23
 IDX_L_SHOULDER_ROLL = 25
@@ -1363,6 +1370,8 @@ class WalkController:
                 lat = p.hip_swing * math.sin(phase_y) * p.lateral_swing_ratio_1st
                 l_fw = r_fw = l_lift = r_lift = 0.0
             else:
+                gait_start = p.init_wait_time + p.cycle_duration * p.weight_shift_duration_ratio
+                startup_gain = self._smoothstep((self.t - gait_start) / p.cycle_duration)
                 norm_z = ((phase_z % (2 * math.pi)) + 2 * math.pi) % (2 * math.pi)
                 at_start = norm_z < 0.3 * math.pi
                 if p.smooth_stop:
@@ -1371,7 +1380,8 @@ class WalkController:
                 else:
                     if self.stop_requested and not self.use_zero_stride:
                         self.use_zero_stride = True
-                lat    = p.hip_swing * math.sin(phase_y)
+                lateral_ratio = p.lateral_swing_ratio_1st + (1.0 - p.lateral_swing_ratio_1st) * startup_gain
+                lat    = p.hip_swing * math.sin(phase_y) * lateral_ratio
                 l_lift = self.calculate_foot_height(phase_z, p.foot_lift)
                 r_lift = self.calculate_foot_height(phase_z + p.phase_offset, p.foot_lift)
                 if self.use_zero_stride:
@@ -1383,6 +1393,9 @@ class WalkController:
                     self.foot_up()
                     self.feet_direction_x()
                     self.feet_direction_y()
+                    self.foot_h *= startup_gain
+                    self.sp_leg["x"] *= startup_gain
+                    self.sw_leg["x"] *= startup_gain
                     # ROID1のRX+右股関節ヨー／RX-左股関節ヨー相当動作を、
                     # Melissaでは旋回方向が一致するよう腰ヨーへ逆符号で移す。
                     waist_yaw_deg = -self.hip_yaw_equivalent()
@@ -1411,8 +1424,8 @@ class WalkController:
 
             z = pl.LINK_LEG_LENGTH - pl.SHORTEN_LEG_LENGTH
             if self.w_sts == 3 and not self.use_zero_stride:
-                l_pos = np.array([l_fw, l_lat, z - l_lift])
-                r_pos = np.array([r_fw, r_lat, z - r_lift])
+                l_pos = np.array([l_fw, -lat * (1.0 - startup_gain) + l_lat * startup_gain, z - l_lift])
+                r_pos = np.array([r_fw,  lat * (1.0 - startup_gain) + r_lat * startup_gain, z - r_lift])
             else:
                 l_pos = np.array([l_fw,  -lat, z - l_lift])
                 r_pos = np.array([r_fw,   lat, z - r_lift])
@@ -1534,6 +1547,13 @@ def walk_ik_step() -> None:
     fwd, lat, turn, right_y = _pad_axes()
     walk_active = (abs(lat) + abs(fwd) + abs(turn)) >= STICK_DEAD
     _bhv_commander._variables['UserVal_0'] = 1 if walk_active else 0
+    if walk_active and walk.mot_sts != WalkController.WALK:
+        # MotionPlayerが保持する待機姿勢をIKの始点にする。
+        current_output = _bhv_commander.get_last_output()
+        for index in MELISSA_SERVO_INDICES:
+            walk.data[index] = current_output[index] / 100.0
+            walk.data[index - 1] = current_output[index - 1]
+    previous_angles = {index: walk.data[index] for index in MELISSA_SERVO_INDICES}
     if walk_active:
         if walk.mot_sts != WalkController.WALK:
             walk.t = 0.0
@@ -1554,6 +1574,10 @@ def walk_ik_step() -> None:
         walk.set_walk_direction(0.0, 0.0, 0.0)
         walk.stop_walk()
     _apply_arm_pitch(walk, right_y)
+    for index, previous in previous_angles.items():
+        speed_limit = JOINT_MAX_SPEED_DEG_S.get(index, _DEFAULT_MAX_SPEED_DEG_S)
+        max_step = speed_limit * WALK_JOINT_SPEED_FRACTION / LOOP_HZ
+        walk.data[index] = max(previous - max_step, min(previous + max_step, walk.data[index]))
 
 
 def user_setup() -> None:
