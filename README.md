@@ -1,5 +1,7 @@
 # mcp-meridis
 
+[English](README_EN.md) | 日本語
+
 
 ## 概要
 
@@ -10,7 +12,9 @@ mcp-meridisは、ロボットの制御（主に歩行）・パラメータ管理
 - **MCPサーバー** としても動作するので、AI エージェント（Claude 等）からの自然言語指示にも対応しています。
 - 複数のプログラム間でデータを高速に交換（ブリッジ）する目的で **Redisサーバー** を使用しています。
 
-![mcp-meridis_merimujoco](image/mcp-meridis-walk.png)
+[![mcp-meridis_merimujoco](image/mcp-meridis-walk-play.png)](https://www.youtube.com/watch?v=3TW-UL5gDTo&t=3s)
+
+上の画像をクリックするとYoutube動画を再生します
 
 ## 主な機能
 
@@ -338,10 +342,20 @@ Quick Start 5 と同様にプロンプトをチャットに打ち込んでくだ
 
 ## 詳細ドキュメント
 
-[README_advance.md](README_advance.md) では、次の内容をまとめています。
+[技術仕様を読む](README_advance.md) では、次の内容をまとめています。
 
 - 起動オプションと接続設定（シミュレーション/実機）
 - Web UI 全タブの操作ガイド
 - MCPツール一覧と実用プロンプト例
 - ログ収集・可視化・解析ツールの使い方
 - ファイル構成と主要パラメータのリファレンス
+
+[背景・目的・用語集](https://github.com/holypong/meridis/blob/main/README_concept.md)
+- meridian をベースにする背景
+- mcpサーバーにする目的
+- フィジカルAI・エンボディードAIなどの用語集
+
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

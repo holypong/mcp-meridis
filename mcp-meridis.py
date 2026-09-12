@@ -506,11 +506,11 @@ def system_reset():
     data[27] = 0.0  # L_ELBOW_Y
     data[29] = 0.0  # L_ELBOW_P
     transfer.set_data(REDIS_KEY_WRITE, data)
-    return "リセット信号（data[0]=5556）を1回送信しました。両腕IKを解除しました。", "", ""
+    return "リセット信号（data[0]=5556）を1回送信しました", "", ""
 
 def robot_status():
     """ロボット状態確認（IMU情報含む）"""
-    global MOT_STS, t, w_sts, buf_input, buf_index
+    global MOT_STS, t, w_sts, buf_input, buf_index, receiver, REDIS_KEY_READ
     status_map = {IDLE: "停止中", WALK: "歩行中"}
     current_status = status_map.get(MOT_STS, "不明")
     
@@ -524,9 +524,14 @@ def robot_status():
         f"3. 歩行段階: {w_sts}"
     ]
     
-    # IMU情報の取得（buf_inputから最新データ）
-    if buf_index > 0:
+    # IMU情報の取得（現在のRedis読み取りキーを優先し、失敗時はbuf_inputを使用）
+    latest_data = None
+    if receiver is not None:
+        latest_data = receiver.get_data(key=REDIS_KEY_READ)
+    if latest_data is None and buf_index > 0:
         latest_data = buf_input[buf_index - 1]
+
+    if latest_data is not None:
         
         # 加速度センサ (m/s^2) - 3次元ベクトル表記
         acc_x = latest_data[mrd.MRD_ACC_X]
