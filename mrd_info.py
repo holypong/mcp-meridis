@@ -129,11 +129,14 @@ def get_key_index_text():
     return '\n'.join(lines)
 
 
-def get_system_info(params_text: str) -> str:
+def get_system_info(params_text: str, startup_options_text: str = "") -> str:
     """システム情報（キーインデックス・パラメータ・ツール一覧）を一括取得"""
     return "\n".join([
         "=== Meridim90 キーインデックス一覧 ===",
         get_key_index_text(),
+        "",
+        "=== 起動時のオプション ===",
+        startup_options_text,
         "",
         "=== 現在の歩行パラメータとリンクパラメータ ===",
         params_text,
@@ -141,6 +144,7 @@ def get_system_info(params_text: str) -> str:
         "=== 使用可能なツール ===",
         "- getmrdkey: Meridim90のキーインデックス一覧を取得",
         "- get_params_text: 現在のパラメータを取得",
+        "- get_startup_options: 起動時のオプションと指定値を取得",
         "- set_params_text: パラメータを一括設定",
         "- robot_walk: ロボットを歩行させる（duration指定可能）",
         "- robot_stop: ロボットを停止",

@@ -241,6 +241,7 @@ AIエージェント（Claude、Cursor等）から利用可能な関数（全28�
 | `set_params_text(text)` | `text` — `[WalkParams]` / `[LinkParams]` セクション形式のテキスト | パラメータ一括設定 |
 | `get_initial_params_text()` | なし | JSON ファイルの初期値を取得（メモリへの反映には `set_params_text` が必要） |
 | `get_system_info()` | なし | システム情報一括取得（AIエージェント向け） |
+| `get_startup_options()` | なし | 起動時の `--redis`・`--walkparam`・`--linkparam` の指定値、既定値、用途をJSONで取得 |
 
 ### Redis
 

@@ -849,9 +849,26 @@ def parse_arguments():
     return parser.parse_args()
 
 
+STARTUP_ARGUMENTS = None
+
+
+def get_startup_options():
+    """起動時の設定ファイル指定をAI向けのJSONで返す。"""
+    if STARTUP_ARGUMENTS is None:
+        return json.dumps({"error": "アプリはまだ起動していません"}, ensure_ascii=False)
+    return json.dumps({
+        "description": "mcp-meridis.py の起動時オプション。変更には再起動が必要です。",
+        "options": {
+            "--redis": {"value": STARTUP_ARGUMENTS["redis"], "default": "redis.json", "description": "Redis設定ファイル"},
+            "--walkparam": {"value": STARTUP_ARGUMENTS["walkparam"], "default": "walkparam.json", "description": "歩行パラメータファイル"},
+            "--linkparam": {"value": STARTUP_ARGUMENTS["linkparam"], "default": "linkparam.json", "description": "リンクパラメータファイル"},
+        },
+    }, indent=2, ensure_ascii=False)
+
+
 def get_system_info():
     """システム情報（キーインデックスとパラメータ）を一括取得"""
-    return _get_system_info(get_params_text())
+    return _get_system_info(get_params_text(), get_startup_options())
 
 
 # ─────────────────────────────────────────────────────────
@@ -1137,10 +1154,12 @@ def main():
     """メイン関数 - コマンドライン引数を処理してGradioアプリを起動"""
     global receiver, transfer, walk_controller, WALKPARAM_FILE, params
     global LINKPARAM_FILE, params_link, link_params_full, _arm_params_cache
+    global STARTUP_ARGUMENTS
 
     try:
         # コマンドライン引数を解析
         args = parse_arguments()
+        STARTUP_ARGUMENTS = vars(args).copy()
 
         # walkparamファイルを引数で上書き
         if args.walkparam != WALKPARAM_FILE:
@@ -1268,6 +1287,9 @@ AIエージェントはこの情報を使ってシステムを理解します。
                     sysinfo_btn = gr.Button("情報取得")
                     sysinfo_box = gr.Textbox(label="System Info", lines=50)
                     sysinfo_btn.click(fn=get_system_info, inputs=[], outputs=sysinfo_box)
+                    startup_btn = gr.Button("起動オプション取得")
+                    startup_box = gr.Textbox(label="Startup Options", lines=15)
+                    startup_btn.click(fn=get_startup_options, inputs=[], outputs=startup_box, api_name="get_startup_options")
 
                 with gr.Tab("Arm"):
                     gr.Markdown("### 腕 IK 制御（3自由度）\n目標手先位置 [m]  を x,y,z 形式で入力して「設定」すると関節が動きます。 \n「取得」で両腕の手先位置と関節角を読み込みます。")

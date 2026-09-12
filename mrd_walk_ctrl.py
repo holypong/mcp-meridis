@@ -352,6 +352,11 @@ class WalkController:
                 l_forward = 0
                 r_forward = 0
             else:
+                # 重心移動から定常歩行への切替では、右足の位相が遊脚の頂点に
+                # 当たる。最初の1周期で足上げ・前後移動を連続的に立ち上げる。
+                gait_start = self.params.init_wait_time + self.params.cycle_duration * self.params.weight_shift_duration_ratio
+                startup_progress = np.clip((self.t - gait_start) / self.params.cycle_duration, 0.0, 1.0)
+                startup_gain = startup_progress * startup_progress * (3.0 - 2.0 * startup_progress)
                 # サイクル開始位相の検出（位相が0～0.3πの範囲にいるか）
                 normalized_phase_z = ((phase_z % (2 * np.pi)) + 2 * np.pi) % (2 * np.pi)
                 at_cycle_start = (normalized_phase_z < 0.3 * np.pi)
@@ -366,16 +371,17 @@ class WalkController:
                     if self.stop_requested and not self.use_zero_stride:
                         self.use_zero_stride = True
                 
-                lateral_swing = self.params.hip_swing * np.sin(phase_y)
-                l_foot_swing = self.calculate_foot_height(phase_z, self.params.foot_lift)
-                r_foot_swing = self.calculate_foot_height(phase_z + self.params.phase_offset, self.params.foot_lift)
+                lateral_ratio = self.params.lateral_swing_ratio_1st + (1.0 - self.params.lateral_swing_ratio_1st) * startup_gain
+                lateral_swing = self.params.hip_swing * np.sin(phase_y) * lateral_ratio
+                l_foot_swing = self.calculate_foot_height(phase_z, self.params.foot_lift) * startup_gain
+                r_foot_swing = self.calculate_foot_height(phase_z + self.params.phase_offset, self.params.foot_lift) * startup_gain
 
                 # その場足踏みモードではストライド0、通常時は設定値
                 if self.use_zero_stride:
                     l_forward = 0.0
                     r_forward = 0.0
                 else:
-                    stride = min(self.params.forward_stride, self.params.max_stride)
+                    stride = min(self.params.forward_stride, self.params.max_stride) * startup_gain
                     l_forward = self.calculate_forward_motion(phase_z, stride)
                     r_forward = self.calculate_forward_motion(phase_z + self.params.phase_offset, stride)
 
