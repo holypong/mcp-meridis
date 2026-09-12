@@ -226,7 +226,7 @@ foot_ref_pitch = np.radians(0.0)  # 基準となる足首ピッチ角
 data = [0.0] * MSG_SIZE
 
 PAD_DEFAULT = {"CMD": 0, "LX": 0.0, "LY": 0.0, "RX": 0.0, "RY": 0.0}
-PAD_INDICES = {"CMD": 15, "LX": 16, "LY": 17, "RX": 18, "RY": 19}
+PAD_PACKET_INDICES = (15, 16, 17, 18)
 PAD_FIELDS = {"pad.btn": "CMD", "pad.analogl.x": "LX", "pad.analogl.y": "LY", "pad.analogr.x": "RX", "pad.analogr.y": "RY"}
 PAD_DEFAULT_TEXT = json.dumps({field: PAD_DEFAULT[name] for field, name in PAD_FIELDS.items()}, indent=2)
 _pad_lock = threading.RLock()
@@ -253,14 +253,36 @@ def _parse_pad(text):
     return parsed
 
 
+def _pack_pad_axes(x, y):
+    """符号付き8ビットのYを下位、Xを上位に詰める。"""
+    x_byte = round(x * 127) & 0xFF
+    y_byte = round(y * 127) & 0xFF
+    return (x_byte << 8) | y_byte
+
+
+def _apply_pad(packet, values):
+    packet[15] = values["CMD"]
+    packet[16] = _pack_pad_axes(values["LX"], values["LY"])
+    packet[17] = _pack_pad_axes(values["RX"], values["RY"])
+    packet[18] = 0  # JSONにL2/R2トリガーは含まれない
+
+
+def _unpack_pad_axes(value):
+    packed = int(value) & 0xFFFF
+    y_byte = packed & 0xFF
+    x_byte = (packed >> 8) & 0xFF
+    y = (y_byte - 256 if y_byte >= 128 else y_byte) / 127.0
+    x = (x_byte - 256 if x_byte >= 128 else x_byte) / 127.0
+    return x, y
+
+
 class PadOverrideTransfer(redis_transfer.RedisTransfer):
     """Meridim90 の送信時に、設定された PAD 値を全経路へ適用する。"""
 
     def set_data(self, key=None, data=None):
         with _pad_lock:
             if _pad_override is not None and data is not None and len(data) == MSG_SIZE and (key or self.redis_key) == self.redis_key:
-                for name, index in PAD_INDICES.items():
-                    data[index] = _pad_override[name]
+                _apply_pad(data, _pad_override)
             return super().set_data(key, data)
 
 
@@ -270,7 +292,7 @@ def toggle_pad(mode, text):
     if mode == "Disable":
         with _pad_lock:
             _pad_override = None
-            for index in PAD_INDICES.values():
+            for index in PAD_PACKET_INDICES:
                 data[index] = 0.0
             active_transfer = globals().get("transfer")
             if active_transfer is not None:
@@ -708,10 +730,12 @@ def get_pad_data(key: str):
         arr = [float(d[str(i)]) if str(i) in d else 0.0 for i in range(len(d))]
         if len(arr) < 20:
             return f"error: データ不足 ({len(arr)} 要素、最低20必要)"
+        lx, ly = _unpack_pad_axes(arr[16])
+        rx, ry = _unpack_pad_axes(arr[17])
         pad = PadState(
             btn=int(arr[15]),
-            analogl=PadAnalog(x=arr[16], y=arr[17]),
-            analogr=PadAnalog(x=arr[18], y=arr[19]),
+            analogl=PadAnalog(x=lx, y=ly),
+            analogr=PadAnalog(x=rx, y=ry),
         )
         lines = [
             f"Key: {key}",
