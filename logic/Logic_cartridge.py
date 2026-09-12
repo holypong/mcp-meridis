@@ -991,7 +991,6 @@ WALK_PARAMS = {
     'smooth_stop': False,
     'mix_enable': False,
     'mix_gyro_g': 0.001,
-    'walk_cycle_time': 0.20,
     'term_foot_land': 0.18,
     'term_foot_weight_shift': 0.45,
     'term_land_stride': 0.18,
@@ -1064,7 +1063,7 @@ class WalkParams:
     landing_period_ratio: float      = _param_field(0.10, "両足着地期間の比率", "float")
     weight_shift_duration_ratio: float = _param_field(0.25, "重心移動期間の比率", "float")
     end_of_simulation: float         = _param_field(8.0,  "シミュレーション終了時間[秒]", "float")
-    cycle_duration: float            = _param_field(0.6,  "1周期の時間[秒]", "float")
+    cycle_duration: float            = _param_field(0.6,  "左右の軸足交代2回分の周期[秒]", "float")
     swing_ratio: float               = _param_field(0.4,  "遊脚期間の比率 (0.0-1.0、推奨0.4)", "float")
     foot_lift: float                 = _param_field(0.020, "遊脚の持ち上げ量[m]", "float")
     hip_swing: float                 = _param_field(0.015, "横方向のスイング量[m]", "float")
@@ -1077,7 +1076,6 @@ class WalkParams:
     smooth_stop: bool                = _param_field(False, "停止時に一歩追加してから止まるか", "bool")
     mix_enable: bool                 = _param_field(False, "ロール角を足首に反映するか", "bool")
     mix_gyro_g: float                = _param_field(0.001, "ジャイロミキシングゲイン係数", "float")
-    walk_cycle_time: float           = _param_field(0.15, "歩行周期[秒]", "float")
     term_foot_land: float            = _param_field(0.10, "着地期間比率", "float")
     term_foot_weight_shift: float    = _param_field(0.35, "重心移動期間比率", "float")
     term_land_stride: float          = _param_field(0.10, "前後/左右/旋回の着地期間比率", "float")
@@ -1154,6 +1152,16 @@ class WalkController:
     def _clamp(v: float, lo: float, hi: float) -> float:
         return max(lo, min(hi, v))
 
+    @staticmethod
+    def _smoothstep(v: float) -> float:
+        v = max(0.0, min(1.0, v))
+        return v * v * (3.0 - 2.0 * v)
+
+    @property
+    def walk_cycle_time(self) -> float:
+        """軸足を1回交代する時間。全歩行周期の半分。"""
+        return max(self.params.cycle_duration * 0.5, 1e-6)
+
     def set_walk_direction(self, fwd: float, lat: float, turn: float) -> None:
         self.foot_direction["x"] = float(fwd) * self.params.foot_stride_max
         self.foot_direction["y"] = float(lat) * self.params.foot_side_max
@@ -1162,7 +1170,7 @@ class WalkController:
     def hip_yaw_equivalent(self) -> float:
         """RX+は右、RX-は左のROID1股関節ヨー相当値[deg]を返す。"""
         p = self.params
-        phase = self.fwct_time / max(p.walk_cycle_time, 1e-6)
+        phase = self.fwct_time / self.walk_cycle_time
         ls = self._clamp(p.term_land_stride, 0.01, 0.45)
         le = 1.0 - ls
         turn = self.foot_direction["turn"]
@@ -1188,7 +1196,7 @@ class WalkController:
 
     def foot_up(self) -> None:
         p = self.params
-        cycle = max(p.walk_cycle_time, 1e-6)
+        cycle = self.walk_cycle_time
         phase = self.fwct_time / cycle
         land = self._clamp(p.term_foot_land, 0.01, 0.45)
         weight = self._clamp(p.term_foot_weight_shift, land, 0.9)
@@ -1208,24 +1216,20 @@ class WalkController:
 
     def feet_direction_x(self) -> None:
         p = self.params
-        cycle = max(p.walk_cycle_time, 1e-6)
+        cycle = self.walk_cycle_time
         phase = self.fwct_time / cycle
         ls = self._clamp(p.term_land_stride, 0.01, 0.45)
         le = 1.0 - ls
         x = self.foot_direction["x"]
 
-        if phase < ls:
-            self.sp_leg["x"] = x * (phase / ls)
-        elif phase <= le:
-            mid = (phase - ls) / max(le - ls, 1e-6)
-            self.sp_leg["x"] = x * (1.0 - 2.0 * mid)
-        else:
-            ret = (phase - le) / max(1.0 - le, 1e-6)
-            self.sp_leg["x"] = -x + x * (1.0 - ret) * 0.5
+        # 軸足は +x→-x、遊脚は -x→+x。交代時には互いの終点が次の始点となる。
+        self.sp_leg["x"] = x * (1.0 - 2.0 * self._smoothstep(phase))
+        swing = self._smoothstep((phase - ls) / max(le - ls, 1e-6))
+        self.sw_leg["x"] = x * (2.0 * swing - 1.0)
 
     def feet_direction_y(self) -> None:
         p = self.params
-        cycle = max(p.walk_cycle_time, 1e-6)
+        cycle = self.walk_cycle_time
         phase = self.fwct_time / cycle
         ls = self._clamp(p.term_land_stride, 0.01, 0.45)
         le = 1.0 - ls
@@ -1262,7 +1266,7 @@ class WalkController:
                 self.l_foot["y"] = ay * (1.0 - rp)
 
     def counterCont(self, dt: float) -> None:
-        cycle = max(self.params.walk_cycle_time, 1e-6)
+        cycle = self.walk_cycle_time
         self.fwct_time += dt
         if self.fwct_time >= cycle:
             self.fwct_time -= cycle
@@ -1389,8 +1393,6 @@ class WalkController:
                     else:  # 左軸足
                         self.sp_leg["y"] = self.l_foot["y"]
                         self.sw_leg["y"] = self.r_foot["y"]
-
-                    self.sw_leg["x"] = -self.sp_leg["x"]
 
                     if self.jikuasi == 0:  # 右軸足
                         r_fw = self.sp_leg["x"]
