@@ -126,68 +126,55 @@ def getmrdkey():
     return get_key_index_text()
 # MeridimKeyParams UI は demo ブロック内の gr.Tab で定義する
 
-# パラメータ一括取得
+# パラメータ一括取得（JSON形式）
+# LinkParamsはlinkparam.jsonの全項目（LinkParamsデータクラスにない項目も含む）を表示する
 def get_params_text():
     walk_dict = dataclasses.asdict(params)
-    link_dict = dataclasses.asdict(params_link)
-    lines = ["[WalkParams]"]
-    for k, v in walk_dict.items():
-        lines.append(f"{k}={v}")
-    lines.append("")
-    lines.append("[LinkParams]")
-    for k, v in link_dict.items():
-        lines.append(f"{k}={v}")
-    return "\n".join(lines)
+    link_dict = get_link_params_display_dict()
+    return json.dumps(
+        {"WalkParams": walk_dict, "LinkParams": link_dict},
+        indent=2, ensure_ascii=False
+    )
 
 # パラメータ一括設定
+# 受け付けるJSON形式:
+#   1. get_params_text() の出力形式（{"WalkParams": {...}, "LinkParams": {...}}）
+#   2. walkparam.json / walkparam-fast.json / linkparam.json をそのままコピペしたフラットな形式
+#      （どちらのパラメータかはキー名の一致から自動判定する。WalkParamsのフィールド名に
+#        一致しないキーはLinkParams側として扱うため、linkparam.jsonの全項目を受け付けられる）
 def set_params_text(text):
-    # WalkParams
-    walk = {}
-    link = {}
-    section = None
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith('#'):
-            continue
-        if line == '[WalkParams]':
-            section = 'walk'
-            continue
-        if line == '[LinkParams]':
-            section = 'link'
-            continue
-        m = re.match(r'([A-Za-z0-9_]+)\s*=\s*(.+)', line)
-        if m:
-            k, v = m.group(1), m.group(2)
-            try:
-                v = eval(v, {"np": np, "True": True, "False": False})
-            except Exception:
-                pass
-            if section == 'walk':
-                walk[k] = v
-            elif section == 'link':
-                link[k] = v
-    for k, v in walk.items():
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        return f"JSONの解析に失敗しました: {e}\n\n{text}"
+    if not isinstance(data, dict):
+        return f"JSONオブジェクト（{{...}}）を入力してください。\n\n{text}"
+
+    walk = data.get("WalkParams")
+    link = data.get("LinkParams")
+    if walk is None and link is None:
+        # フラット形式（walkparam.json / walkparam-fast.json / linkparam.json のコピペ）
+        walk = {k: v for k, v in data.items() if hasattr(params, k)}
+        link = {k: v for k, v in data.items() if k not in walk}
+
+    for k, v in (walk or {}).items():
         if hasattr(params, k):
             setattr(params, k, v)
-    for k, v in link.items():
+    for k, v in (link or {}).items():
+        link_params_full[k] = v
         if hasattr(params_link, k):
             setattr(params_link, k, v)
-    
+
     return get_params_text()
-# JSONファイルから初期設定を読み込んでテキストで返す
+
+# JSONファイルから初期設定を読み込んでJSON形式のテキストで返す
 def get_initial_params_text():
     initial_walk = load_walk_params(WALKPARAM_FILE)
-    initial_link = load_link_params("linkparam.json")
-    walk_dict = dataclasses.asdict(initial_walk)
-    link_dict = dataclasses.asdict(initial_link)
-    lines = ["[WalkParams]"]
-    for k, v in walk_dict.items():
-        lines.append(f"{k}={v}")
-    lines.append("")
-    lines.append("[LinkParams]")
-    for k, v in link_dict.items():
-        lines.append(f"{k}={v}")
-    return "\n".join(lines)
+    initial_link_full = load_link_params_full("linkparam.json")
+    return json.dumps(
+        {"WalkParams": dataclasses.asdict(initial_walk), "LinkParams": initial_link_full},
+        indent=2, ensure_ascii=False
+    )
 
 # Params UI は demo ブロック内の gr.Tab で定義する
 
@@ -256,6 +243,29 @@ params = load_walk_params(WALKPARAM_FILE)
 # JSONファイルから読み込み（なければデフォルト値を使用）
 params_link = load_link_params("linkparam.json")
 #print(f"Loaded LinkParams: THIGH_LENGTH={params_link.THIGH_LENGTH}, SHANK_LENGTH={params_link.SHANK_LENGTH}")
+
+# linkparam.json の全項目を保持する辞書
+# LinkParamsデータクラス（歩行制御が使う脚関連の項目のみ）には無い項目（腕・頭・目のオフセットなど）も
+# 含めて、Param画面ではlinkparam.jsonの内容をすべて表示・編集できるようにする
+def load_link_params_full(json_path="linkparam.json"):
+    if os.path.exists(json_path):
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error loading {json_path}: {e}")
+    return {}
+
+link_params_full = load_link_params_full("linkparam.json")
+
+def get_link_params_display_dict():
+    """LinkParamsの表示用辞書を返す。
+    LinkParamsデータクラスで管理している項目は最新の値（setattrで編集された値）を反映し、
+    それ以外のlinkparam.jsonのみに存在する項目はlink_params_fullの値をそのまま表示する。
+    """
+    merged = dict(link_params_full)
+    merged.update(dataclasses.asdict(params_link))
+    return merged
 
 
 # パラメータメタデータ取得関数
@@ -1160,9 +1170,10 @@ def main():
                     status_btn.click(fn=robot_status, inputs=[], outputs=result_out)
 
                 with gr.Tab("Params"):
-                    gr.Markdown(f"""### パラメータ一括取得・一括設定
-1. [メモリを取得]ボタンで現在のメモリ上の値をテキストボックスに表示
+                    gr.Markdown(f"""### パラメータ一括取得・一括設定（JSON形式）
+1. [メモリを取得]ボタンで現在のメモリ上の値を JSON 形式でテキストボックスに表示
 2. 編集後、[メモリを設定]ボタンで一括反映
+   - `walkparam.json` / `walkparam-fast.json` / `linkparam.json` の内容をそのままコピペしても反映可能（キー名からWalk/Linkを自動判定）
 3. [初期設定を取得]で JSON ファイルの初期値を表示（反映するには[メモリを設定]を押す）
 4. 初期設定の読み込み元: `{WALKPARAM_FILE}`
 """)
