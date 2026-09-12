@@ -309,6 +309,7 @@ def toggle_pad(mode, text):
     if mode == "Disable":
         with _pad_lock:
             _pad_override = None
+            _finish_pad_capture()
             for index in PAD_PACKET_INDICES:
                 data[index] = 0.0
             active_transfer = globals().get("transfer")
@@ -323,6 +324,8 @@ def toggle_pad(mode, text):
     with _pad_lock:
         _pad_config = values.copy()
         _pad_override = values
+        if not _pad_has_input(values):
+            _finish_pad_capture()
         if LOGIC_CARTRIDGE_PATH.is_file():
             MOT_STS = IDLE  # 既存の歩行制御との同時書き込みを防ぐ
         active_transfer = globals().get("transfer")
@@ -343,6 +346,8 @@ def update_pad_values(mode, text):
     with _pad_lock:
         _pad_config = values.copy()
         _pad_override = values
+        if not _pad_has_input(values):
+            _finish_pad_capture()
         active_transfer = globals().get("transfer")
         if active_transfer is not None:
             active_transfer.set_data(REDIS_KEY_WRITE, data)
@@ -356,6 +361,8 @@ def set_pad_override(enabled: bool) -> dict:
         return {"error": "enabledはtrueまたはfalseで指定してください"}
     with _pad_lock:
         _pad_override = _pad_config.copy() if enabled else None
+        if not enabled or not _pad_has_input(_pad_config):
+            _finish_pad_capture()
         if enabled and LOGIC_CARTRIDGE_PATH.is_file():
             MOT_STS = IDLE
         packet = data.copy()
@@ -415,6 +422,8 @@ def set_pad_values(buttons: str = "", left_stick_x: float = 0.0,
         enabled = _pad_override is not None
         if enabled:
             _pad_override = config.copy()
+            if not _pad_has_input(config):
+                _finish_pad_capture()
             active_transfer = globals().get("transfer")
             if active_transfer is not None and active_transfer.is_connected:
                 packet = data.copy()
@@ -569,15 +578,67 @@ def get_logic_cartridge_joint_angles(angle_scale: float = 0.01, ticks: int = 1) 
                     return {"error": "Redisへの書き込み後、保存値が一致しませんでした"}
             except Exception as exc:
                 return {"error": f"Redis保存値の確認に失敗: {exc}"}
+            _record_pad_frame(pad, feedback, send_packet)
         return {"tick": _logic_tick, "loop_hz": _logic_module.LOOP_HZ,
                 "angle_scale": scale, "redis_key": REDIS_KEY_WRITE,
-                "redis_written": True, "joints": joints}
+                "redis_written": True, "buffer_index": buf_index, "joints": joints}
 
 
 # バッファ変数
 buf_output = [[0.0] * MSG_SIZE for _ in range(10000)]  # 送信データのバッファ（10000個のdata配列を格納）
 buf_input = [[0.0] * MSG_SIZE for _ in range(10000)]   # 受信データのバッファ（10000個のdata配列を格納）
 buf_index = 0  # インクリメンタルカウンタ
+PAD_BUFFER_LIMIT = 10000
+_pad_capture_lock = threading.Lock()
+_pad_capture_active = False
+_pad_capture_armed = True
+_pad_capture_stop_reason = None
+
+
+def _pad_has_input(values):
+    return any(values.get(name, 0) != 0 for name in ("CMD", "LX", "LY", "RX", "RY", "L2", "R2"))
+
+
+def _finish_pad_capture():
+    """PADがゼロまたはDisableになったら記録を終了し、次の操作に備える。"""
+    global _pad_capture_active, _pad_capture_armed, _pad_capture_stop_reason
+    with _pad_capture_lock:
+        if _pad_capture_active:
+            _pad_capture_stop_reason = "pad_zero"
+            print(f"[PAD buffer] stopped: {buf_index} frames")
+        _pad_capture_active = False
+        _pad_capture_armed = True
+
+
+def _record_pad_frame(pad, input_packet, output_packet):
+    """PAD操作中の送受信フレームだけを既存バッファへ記録する。"""
+    global buf_input, buf_output, buf_index
+    global _pad_capture_active, _pad_capture_armed, _pad_capture_stop_reason
+    with _pad_capture_lock:
+        if not _pad_has_input(pad):
+            if _pad_capture_active:
+                _pad_capture_stop_reason = "pad_zero"
+                print(f"[PAD buffer] stopped: {buf_index} frames")
+            _pad_capture_active = False
+            _pad_capture_armed = True
+            return
+        if _pad_capture_armed and not _pad_capture_active:
+            buf_input = [[0.0] * MSG_SIZE for _ in range(PAD_BUFFER_LIMIT)]
+            buf_output = [[0.0] * MSG_SIZE for _ in range(PAD_BUFFER_LIMIT)]
+            buf_index = 0
+            _pad_capture_active = True
+            _pad_capture_armed = False
+            _pad_capture_stop_reason = None
+            print("[PAD buffer] recording started")
+        if not _pad_capture_active:
+            return
+        buf_input[buf_index] = list(input_packet)
+        buf_output[buf_index] = list(output_packet)
+        buf_index += 1
+        if buf_index >= PAD_BUFFER_LIMIT:
+            _pad_capture_active = False
+            _pad_capture_stop_reason = "buffer_full"
+            print(f"[PAD buffer] full: {buf_index} frames")
 
 
 # WalkParamsとLinkParamsはwalk_ctrlからインポート
