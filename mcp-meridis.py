@@ -225,6 +225,87 @@ foot_ref_pitch = np.radians(0.0)  # 基準となる足首ピッチ角
 # float型のdataの初期化
 data = [0.0] * MSG_SIZE
 
+PAD_DEFAULT = {"CMD": 0, "LX": 0.0, "LY": 0.0, "RX": 0.0, "RY": 0.0}
+PAD_INDICES = {"CMD": 15, "LX": 16, "LY": 17, "RX": 18, "RY": 19}
+PAD_FIELDS = {"pad.btn": "CMD", "pad.analogl.x": "LX", "pad.analogl.y": "LY", "pad.analogr.x": "RX", "pad.analogr.y": "RY"}
+PAD_DEFAULT_TEXT = json.dumps({field: PAD_DEFAULT[name] for field, name in PAD_FIELDS.items()}, indent=2)
+_pad_lock = threading.RLock()
+_pad_override = None  # Enable までは受信した PAD 値をそのまま送る
+
+
+def _parse_pad(text):
+    try:
+        supplied = json.loads(text)
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise ValueError(f"JSONを解析できません: {exc}") from exc
+    if not isinstance(supplied, dict) or set(supplied) != set(PAD_FIELDS):
+        raise ValueError("pad.btn と左右アナログ軸の5項目を指定してください")
+    values = {name: supplied[field] for field, name in PAD_FIELDS.items()}
+    cmd = values["CMD"]
+    if isinstance(cmd, bool) or not isinstance(cmd, int) or not 0 <= cmd <= 65535:
+        raise ValueError("CMDは0～65535の整数で指定してください")
+    parsed = {"CMD": cmd}
+    for name in ("LX", "LY", "RX", "RY"):
+        value = values[name]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not -1.0 <= value <= 1.0:
+            raise ValueError(f"{name}は-1.0～1.0の数値で指定してください")
+        parsed[name] = float(value)
+    return parsed
+
+
+class PadOverrideTransfer(redis_transfer.RedisTransfer):
+    """Meridim90 の送信時に、設定された PAD 値を全経路へ適用する。"""
+
+    def set_data(self, key=None, data=None):
+        with _pad_lock:
+            if _pad_override is not None and data is not None and len(data) == MSG_SIZE and (key or self.redis_key) == self.redis_key:
+                for name, index in PAD_INDICES.items():
+                    data[index] = _pad_override[name]
+            return super().set_data(key, data)
+
+
+def toggle_pad(mode, text):
+    """Enable で PAD を上書きし、Disable で上書きを解除する。"""
+    global _pad_override
+    if mode == "Disable":
+        with _pad_lock:
+            _pad_override = None
+            for index in PAD_INDICES.values():
+                data[index] = 0.0
+            active_transfer = globals().get("transfer")
+            if active_transfer is not None:
+                active_transfer.set_data(REDIS_KEY_WRITE, data)
+        return "Disable", text, "PAD の上書きを無効にしました"
+    try:
+        values = _parse_pad(text)
+    except ValueError as exc:
+        toggle_pad("Disable", text)
+        return "Disable", text, f"PAD 設定エラー: {exc}"
+    with _pad_lock:
+        _pad_override = values
+        active_transfer = globals().get("transfer")
+        if active_transfer is not None:
+            active_transfer.set_data(REDIS_KEY_WRITE, data)
+    return "Enable", text, "PAD の上書きを有効にしました"
+
+
+def update_pad_values(mode, text):
+    """Enable 中の入力変更を反映する。編集中の不完全な JSON は既存値を維持する。"""
+    if mode != "Enable":
+        return "PAD の上書きは無効です"
+    try:
+        values = _parse_pad(text)
+    except ValueError as exc:
+        return f"PAD 設定エラー: {exc}（前回の有効値を維持）"
+    global _pad_override
+    with _pad_lock:
+        _pad_override = values
+        active_transfer = globals().get("transfer")
+        if active_transfer is not None:
+            active_transfer.set_data(REDIS_KEY_WRITE, data)
+    return "PAD の値を更新しました"
+
+
 # バッファ変数
 buf_output = [[0.0] * MSG_SIZE for _ in range(10000)]  # 送信データのバッファ（10000個のdata配列を格納）
 buf_input = [[0.0] * MSG_SIZE for _ in range(10000)]   # 受信データのバッファ（10000個のdata配列を格納）
@@ -1180,7 +1261,7 @@ def main():
         
         # Redisクライアントを初期化
         receiver = redis_receiver.RedisReceiver(host=REDIS_HOST, port=REDIS_PORT, redis_key=REDIS_KEY_READ)
-        transfer = redis_transfer.RedisTransfer(host=REDIS_HOST, port=REDIS_PORT, redis_key=REDIS_KEY_WRITE)
+        transfer = PadOverrideTransfer(host=REDIS_HOST, port=REDIS_PORT, redis_key=REDIS_KEY_WRITE)
         
         # WalkControllerインスタンスを作成
         walk_controller = WalkController(params=params, params_link=params_link, msg_size=MSG_SIZE)
@@ -1202,7 +1283,29 @@ def main():
                         reset_btn      = gr.Button("Sysreset")
                         status_btn     = gr.Button("Status")
                         duration_input = gr.Textbox(label="Duration", placeholder="歩行時間（秒）", scale=2)
+                    with gr.Group():
+                        gr.Markdown("### PAD")
+                        pad_mode = gr.Radio(
+                            choices=["Disable", "Enable"],
+                            value="Disable",
+                            label="Override",
+                        )
+                        pad_input = gr.Textbox(
+                            label="PAD values (JSON)",
+                            value=PAD_DEFAULT_TEXT,
+                            lines=5,
+                        )
                     result_out = gr.Textbox(label="Result / Status", lines=20)
+                    pad_mode.input(
+                        fn=toggle_pad,
+                        inputs=[pad_mode, pad_input],
+                        outputs=[pad_mode, pad_input, result_out],
+                    )
+                    pad_input.input(
+                        fn=update_pad_values,
+                        inputs=[pad_mode, pad_input],
+                        outputs=result_out,
+                    )
                     home_btn.click(fn=robot_home, inputs=[], outputs=result_out)
                     idle_btn.click(fn=robot_idle, inputs=[], outputs=result_out)
                     walk_btn.click(fn=robot_walk, inputs=duration_input, outputs=result_out)
