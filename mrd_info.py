@@ -157,5 +157,8 @@ def get_system_info(params_text: str, startup_options_text: str = "") -> str:
         "- filepathget_buf_input: buf_input CSVファイルの絶対パスを取得",
         "- filepathget_buf_output: buf_output CSVファイルの絶対パスを取得",
         "- get_system_info: システム情報を一括取得（このスキル）",
+        "- set_pad_override: PAD Overrideを有効・無効にする",
+        "- set_pad_values: ボタン名・左右スティック・L2/R2トリガーの値を設定する",
+        "- check_logic_cartridge_connection: logic/Logic_cartridge.pyの読み込みと関数の動作を確認する",
         "",
     ])

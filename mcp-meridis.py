@@ -231,8 +231,23 @@ PAD_DEFAULT = {"CMD": 0, "LX": 0.0, "LY": 0.0, "RX": 0.0, "RY": 0.0}
 PAD_PACKET_INDICES = (15, 16, 17, 18)
 PAD_FIELDS = {"pad.btn": "CMD", "pad.analogl.x": "LX", "pad.analogl.y": "LY", "pad.analogr.x": "RX", "pad.analogr.y": "RY"}
 PAD_DEFAULT_TEXT = json.dumps({field: PAD_DEFAULT[name] for field, name in PAD_FIELDS.items()}, indent=2)
+LOGIC_CARTRIDGE_PATH = Path(__file__).resolve().parent / "logic" / "Logic_cartridge.py"
 _pad_lock = threading.RLock()
 _pad_override = None  # Enable までは受信した PAD 値をそのまま送る
+_pad_config = PAD_DEFAULT.copy()
+
+PAD_BUTTON_BITS = {
+    "TRIANGLE": 4096, "CIRCLE": 8192, "CROSS": 16384, "SQUARE": 32768,
+    "L1": 1024, "R1": 2048, "SELECT": 1, "START": 8,
+    "L3": 2, "R3": 4, "DPAD_UP": 16, "DPAD_DOWN": 64,
+    "DPAD_RIGHT": 32, "DPAD_LEFT": 128,
+}
+PAD_BUTTON_ALIASES = {
+    "TRI": "TRIANGLE", "△": "TRIANGLE", "CIR": "CIRCLE", "○": "CIRCLE",
+    "CRS": "CROSS", "×": "CROSS", "SQR": "SQUARE", "□": "SQUARE",
+    "SHARE": "SELECT", "OPTIONS": "START", "UP": "DPAD_UP",
+    "DOWN": "DPAD_DOWN", "LEFT": "DPAD_LEFT", "RIGHT": "DPAD_RIGHT",
+}
 
 
 def _parse_pad(text):
@@ -266,7 +281,7 @@ def _apply_pad(packet, values):
     packet[15] = values["CMD"]
     packet[16] = _pack_pad_axes(values["LX"], values["LY"])
     packet[17] = _pack_pad_axes(values["RX"], values["RY"])
-    packet[18] = 0  # JSONにL2/R2トリガーは含まれない
+    packet[18] = (round(values.get("R2", 0.0) * 255) << 8) | round(values.get("L2", 0.0) * 255)
 
 
 def _unpack_pad_axes(value):
@@ -290,7 +305,7 @@ class PadOverrideTransfer(redis_transfer.RedisTransfer):
 
 def toggle_pad(mode, text):
     """Enable で PAD を上書きし、Disable で上書きを解除する。"""
-    global _pad_override, MOT_STS
+    global _pad_override, _pad_config, MOT_STS
     if mode == "Disable":
         with _pad_lock:
             _pad_override = None
@@ -306,8 +321,9 @@ def toggle_pad(mode, text):
         toggle_pad("Disable", text)
         return "Disable", text, f"PAD 設定エラー: {exc}"
     with _pad_lock:
+        _pad_config = values.copy()
         _pad_override = values
-        if Path(__file__).resolve().with_name("Logic_cartridge.py").is_file():
+        if LOGIC_CARTRIDGE_PATH.is_file():
             MOT_STS = IDLE  # 既存の歩行制御との同時書き込みを防ぐ
         active_transfer = globals().get("transfer")
         if active_transfer is not None:
@@ -323,13 +339,88 @@ def update_pad_values(mode, text):
         values = _parse_pad(text)
     except ValueError as exc:
         return f"PAD 設定エラー: {exc}（前回の有効値を維持）"
-    global _pad_override
+    global _pad_override, _pad_config
     with _pad_lock:
+        _pad_config = values.copy()
         _pad_override = values
         active_transfer = globals().get("transfer")
         if active_transfer is not None:
             active_transfer.set_data(REDIS_KEY_WRITE, data)
     return "PAD の値を更新しました"
+
+
+def set_pad_override(enabled: bool) -> dict:
+    """PAD Overrideを有効・無効にする。事前にset_pad_valuesで指定した値を使用する。"""
+    global _pad_override, MOT_STS
+    if not isinstance(enabled, bool):
+        return {"error": "enabledはtrueまたはfalseで指定してください"}
+    with _pad_lock:
+        _pad_override = _pad_config.copy() if enabled else None
+        if enabled and LOGIC_CARTRIDGE_PATH.is_file():
+            MOT_STS = IDLE
+        packet = data.copy()
+        if enabled:
+            _apply_pad(packet, _pad_override)
+        else:
+            for index in PAD_PACKET_INDICES:
+                packet[index] = 0.0
+        active_transfer = globals().get("transfer")
+        connected = bool(active_transfer is not None and active_transfer.is_connected)
+        if connected:
+            active_transfer.set_data(REDIS_KEY_WRITE, packet)
+    return {"enabled": enabled, "pad": _pad_config.copy(), "redis_connected": connected}
+
+
+def set_pad_values(buttons: str = "", left_stick_x: float = 0.0,
+                   left_stick_y: float = 0.0, right_stick_x: float = 0.0,
+                   right_stick_y: float = 0.0, left_trigger: float = 0.0,
+                   right_trigger: float = 0.0) -> dict:
+    """PAD値を設定する。buttonsはCIRCLE/CROSS/SQUARE/TRIANGLE、L1/R1/L2/R2/L3/R3、SELECT/START、DPAD_UP/DOWN/LEFT/RIGHTをカンマ区切りで指定。スティックは-1～1、前進はleft_stick_yの負値。トリガーは0～1。Override有効中は直ちに送信する。"""
+    global _pad_config, _pad_override
+    if not isinstance(buttons, str):
+        return {"error": "buttonsはカンマ区切りの文字列で指定してください"}
+    names = []
+    mask = 0
+    l2_pressed = r2_pressed = False
+    for token in re.split(r"[,+\s]+", buttons.strip()):
+        if not token:
+            continue
+        name = PAD_BUTTON_ALIASES.get(token.upper(), token.upper())
+        if name == "L2":
+            l2_pressed = True
+        elif name == "R2":
+            r2_pressed = True
+        elif name in PAD_BUTTON_BITS:
+            mask |= PAD_BUTTON_BITS[name]
+        else:
+            return {"error": f"未対応のボタン名: {token}"}
+        if name not in names:
+            names.append(name)
+    try:
+        values = [float(value) for value in (
+            left_stick_x, left_stick_y, right_stick_x, right_stick_y,
+            left_trigger, right_trigger,
+        )]
+    except (TypeError, ValueError):
+        return {"error": "スティックとトリガーには数値を指定してください"}
+    if any(not math.isfinite(value) for value in values) or any(abs(value) > 1 for value in values[:4]):
+        return {"error": "スティックは-1～1の有限値で指定してください"}
+    if any(not 0 <= value <= 1 for value in values[4:]):
+        return {"error": "トリガーは0～1で指定してください"}
+    lx, ly, rx, ry, l2, r2 = values
+    config = {"CMD": mask, "LX": lx, "LY": ly, "RX": rx, "RY": ry,
+              "L2": 1.0 if l2_pressed else l2, "R2": 1.0 if r2_pressed else r2}
+    with _pad_lock:
+        _pad_config = config
+        enabled = _pad_override is not None
+        if enabled:
+            _pad_override = config.copy()
+            active_transfer = globals().get("transfer")
+            if active_transfer is not None and active_transfer.is_connected:
+                packet = data.copy()
+                _apply_pad(packet, config)
+                active_transfer.set_data(REDIS_KEY_WRITE, packet)
+    return {"enabled": enabled, "buttons": names, "pad": config}
 
 
 _logic_lock = threading.Lock()
@@ -342,7 +433,7 @@ _logic_thread = None
 def _logic_auto_active():
     with _pad_lock:
         enabled = _pad_override is not None
-    return enabled and Path(__file__).resolve().with_name("Logic_cartridge.py").is_file()
+    return enabled and LOGIC_CARTRIDGE_PATH.is_file()
 
 
 def _logic_auto_loop():
@@ -371,6 +462,38 @@ def start_logic_thread():
         _logic_thread.start()
 
 
+def check_logic_cartridge_connection() -> dict:
+    """logic/Logic_cartridge.pyの読み込み、setup/updateの実行、関節マップを確認する。Mujoco接続は検査しない。"""
+    path = LOGIC_CARTRIDGE_PATH
+    if not path.is_file():
+        return {"ready": False, "path": str(path), "error": "Logic_cartridge.pyが見つかりません"}
+    try:
+        with _logic_lock:
+            signature = (path.stat().st_mtime_ns, path.stat().st_size)
+            if _logic_module is not None and signature == _logic_file_signature:
+                cartridge = _logic_module
+            else:
+                spec = importlib.util.spec_from_file_location("mcp_meridis_logic_check", path)
+                cartridge = importlib.util.module_from_spec(spec)
+                sys.modules[spec.name] = cartridge
+                spec.loader.exec_module(cartridge)
+                if not callable(getattr(cartridge, "setup", None)) or not callable(getattr(cartridge, "update", None)):
+                    raise ValueError("setup/update関数がありません")
+                cartridge.setup()
+                sample = cartridge.update([0.0] * MSG_SIZE, [0.0] * MSG_SIZE)
+                if sample is None or len(sample) != MSG_SIZE:
+                    raise ValueError("updateが90要素の配列を返しません")
+            if not isinstance(getattr(cartridge, "JOINTS", None), dict) or not cartridge.JOINTS:
+                raise ValueError("JOINTS関節マップがありません")
+            loop_hz = int(cartridge.LOOP_HZ)
+    except Exception as exc:
+        return {"ready": False, "path": str(path), "error": str(exc)}
+    with _pad_lock:
+        enabled = _pad_override is not None
+    return {"ready": True, "path": str(path), "loop_hz": loop_hz,
+            "joint_count": len(cartridge.JOINTS), "pad_override_enabled": enabled}
+
+
 def get_logic_cartridge_joint_angles(angle_scale: float = 0.01, ticks: int = 1) -> dict:
     """有効なPADでLogic_cartridgeを進め、倍率を掛けた関節値をRedisへ送る。"""
     global _logic_module, _logic_file_signature, _logic_tick
@@ -392,7 +515,7 @@ def get_logic_cartridge_joint_angles(angle_scale: float = 0.01, ticks: int = 1) 
     if active_transfer is None or not active_transfer.is_connected:
         return {"error": "Redis送信クライアントに接続できません"}
 
-    path = Path(__file__).resolve().with_name("Logic_cartridge.py")
+    path = LOGIC_CARTRIDGE_PATH
     if not path.is_file():
         return {"error": f"{path.name} が見つかりません"}
     signature = (path.stat().st_mtime_ns, path.stat().st_size)
@@ -1590,6 +1713,38 @@ AIエージェントはこの情報を使ってシステムを理解します。
                     vla_get_btn.click(fn=get_vla_task, inputs=[], outputs=vla_task_box, api_name="get_vla_task")
                     arm_cmd_btn.click(fn=set_arm_cmd, inputs=arm_cmd_in, outputs=arm_cmd_box, api_name="set_arm_cmd")
                     arm_off_btn.click(fn=arm_override_off, inputs=[], outputs=arm_cmd_box, api_name="arm_override_off")
+
+            # MCP専用エンドポイント。Control画面には表示しない。
+            with gr.Group(visible=False):
+                mcp_pad_enabled = gr.Checkbox(label="Enable PAD Override", value=False)
+                mcp_pad_override_btn = gr.Button("Set PAD Override")
+                mcp_pad_override_result = gr.JSON()
+                mcp_pad_override_btn.click(
+                    fn=set_pad_override, inputs=mcp_pad_enabled,
+                    outputs=mcp_pad_override_result, api_name="set_pad_override",
+                )
+
+                mcp_pad_buttons = gr.Textbox(label="Buttons, e.g. CIRCLE,L1,DPAD_UP")
+                mcp_lx = gr.Number(label="Left stick X", value=0.0)
+                mcp_ly = gr.Number(label="Left stick Y (forward is negative)", value=0.0)
+                mcp_rx = gr.Number(label="Right stick X", value=0.0)
+                mcp_ry = gr.Number(label="Right stick Y", value=0.0)
+                mcp_l2 = gr.Number(label="L2 trigger", value=0.0)
+                mcp_r2 = gr.Number(label="R2 trigger", value=0.0)
+                mcp_pad_values_btn = gr.Button("Set PAD Values")
+                mcp_pad_values_result = gr.JSON()
+                mcp_pad_values_btn.click(
+                    fn=set_pad_values,
+                    inputs=[mcp_pad_buttons, mcp_lx, mcp_ly, mcp_rx, mcp_ry, mcp_l2, mcp_r2],
+                    outputs=mcp_pad_values_result, api_name="set_pad_values",
+                )
+
+                mcp_logic_check_btn = gr.Button("Check Logic Cartridge")
+                mcp_logic_check_result = gr.JSON()
+                mcp_logic_check_btn.click(
+                    fn=check_logic_cartridge_connection, inputs=[],
+                    outputs=mcp_logic_check_result, api_name="check_logic_cartridge_connection",
+                )
 
             # タブを開くタイミングでドロップダウンを現在のキーで更新
             redis_tab.select(fn=lambda: gr.update(value=REDIS_KEY_READ), outputs=redis_key_dropdown, api_name=False)
