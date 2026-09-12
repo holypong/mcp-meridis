@@ -30,6 +30,8 @@ import argparse
 import dataclasses
 from dataclasses import dataclass, field
 import re
+import importlib.util
+from pathlib import Path
 from mrd_walk_ctrl import WalkController, WalkParams, LinkParams, load_walk_params, load_link_params, save_walk_params, save_link_params
 from mrd_info import MeridimKeyParams, get_key_index_text, get_system_info as _get_system_info
 from mrd_arm_ctrl import (
@@ -288,7 +290,7 @@ class PadOverrideTransfer(redis_transfer.RedisTransfer):
 
 def toggle_pad(mode, text):
     """Enable で PAD を上書きし、Disable で上書きを解除する。"""
-    global _pad_override
+    global _pad_override, MOT_STS
     if mode == "Disable":
         with _pad_lock:
             _pad_override = None
@@ -305,6 +307,8 @@ def toggle_pad(mode, text):
         return "Disable", text, f"PAD 設定エラー: {exc}"
     with _pad_lock:
         _pad_override = values
+        if Path(__file__).resolve().with_name("Logic_cartridge.py").is_file():
+            MOT_STS = IDLE  # 既存の歩行制御との同時書き込みを防ぐ
         active_transfer = globals().get("transfer")
         if active_transfer is not None:
             active_transfer.set_data(REDIS_KEY_WRITE, data)
@@ -326,6 +330,125 @@ def update_pad_values(mode, text):
         if active_transfer is not None:
             active_transfer.set_data(REDIS_KEY_WRITE, data)
     return "PAD の値を更新しました"
+
+
+_logic_lock = threading.Lock()
+_logic_module = None
+_logic_file_signature = None
+_logic_tick = 0
+_logic_thread = None
+
+
+def _logic_auto_active():
+    with _pad_lock:
+        enabled = _pad_override is not None
+    return enabled and Path(__file__).resolve().with_name("Logic_cartridge.py").is_file()
+
+
+def _logic_auto_loop():
+    """PAD Override中はcartridgeを100 Hzで進め、関節指令をRedisへ送る。"""
+    last_error = None
+    while True:
+        started = time.monotonic()
+        if _logic_auto_active():
+            result = get_logic_cartridge_joint_angles()
+            if "error" in result:
+                if result["error"] != last_error:
+                    print(f"[Logic_cartridge] {result['error']}")
+                last_error = result["error"]
+                time.sleep(0.1)
+            else:
+                last_error = None
+        else:
+            last_error = None
+        time.sleep(max(0.0, 0.01 - (time.monotonic() - started)))
+
+
+def start_logic_thread():
+    global _logic_thread
+    if _logic_thread is None or not _logic_thread.is_alive():
+        _logic_thread = threading.Thread(target=_logic_auto_loop, daemon=True)
+        _logic_thread.start()
+
+
+def get_logic_cartridge_joint_angles(angle_scale: float = 0.01, ticks: int = 1) -> dict:
+    """有効なPADでLogic_cartridgeを進め、倍率を掛けた関節値をRedisへ送る。"""
+    global _logic_module, _logic_file_signature, _logic_tick
+    try:
+        scale = float(angle_scale)
+        steps = int(ticks)
+        if not math.isfinite(scale) or not 0.0 <= scale <= 10.0:
+            raise ValueError("angle_scaleは0～10の有限値で指定してください")
+        if isinstance(ticks, float) and ticks != steps or not 1 <= steps <= 1000:
+            raise ValueError("ticksは1～1000の整数で指定してください")
+    except (TypeError, ValueError) as exc:
+        return {"error": str(exc)}
+
+    with _pad_lock:
+        pad = None if _pad_override is None else _pad_override.copy()
+    if pad is None:
+        return {"error": "PAD OverrideをEnableにしてください"}
+    active_transfer = globals().get("transfer")
+    if active_transfer is None or not active_transfer.is_connected:
+        return {"error": "Redis送信クライアントに接続できません"}
+
+    path = Path(__file__).resolve().with_name("Logic_cartridge.py")
+    if not path.is_file():
+        return {"error": f"{path.name} が見つかりません"}
+    signature = (path.stat().st_mtime_ns, path.stat().st_size)
+
+    with _logic_lock:
+        if _logic_module is None or signature != _logic_file_signature:
+            try:
+                spec = importlib.util.spec_from_file_location("mcp_meridis_logic_cartridge", path)
+                cartridge = importlib.util.module_from_spec(spec)
+                sys.modules[spec.name] = cartridge
+                spec.loader.exec_module(cartridge)
+                cartridge.setup()
+            except Exception as exc:
+                _logic_module = None
+                return {"error": f"Logic_cartridgeの初期化に失敗: {exc}"}
+            _logic_module = cartridge
+            _logic_file_signature = signature
+            _logic_tick = 0
+
+        feedback = receiver.get_data(key=REDIS_KEY_READ) if receiver is not None else None
+        if feedback is None or len(feedback) != MSG_SIZE:
+            feedback = [0.0] * MSG_SIZE
+        packet = [0.0] * MSG_SIZE
+        _apply_pad(packet, pad)
+        try:
+            for _ in range(steps):
+                output = _logic_module.update(feedback, packet)
+        except Exception as exc:
+            return {"error": f"Logic_cartridgeの計算に失敗: {exc}"}
+        if output is None or len(output) != MSG_SIZE:
+            return {"error": "Logic_cartridgeが90要素の関節データを返しませんでした"}
+        _logic_tick += steps
+        joints = {
+            name: {"angle": float(output[index]) * scale,
+                   "torque": bool(output[index - 1])}
+            for name, index in _logic_module.JOINTS.items()
+        }
+        send_packet = list(output)
+        for index in range(21, 81, 2):
+            send_packet[index] = float(output[index]) * scale
+        with _pad_lock:
+            if _pad_override != pad:
+                return {"error": "計算中にPAD Overrideが変更されました。再実行してください"}
+            _apply_pad(send_packet, pad)
+            active_transfer.set_data(REDIS_KEY_WRITE, send_packet)
+            indices = [15, 16, 17, 18] + list(range(20, 81))
+            try:
+                stored = active_transfer.redis_client.hmget(REDIS_KEY_WRITE, [str(i) for i in indices])
+                if any(value is None or float(value) != float(send_packet[index])
+                       for index, value in zip(indices, stored)):
+                    return {"error": "Redisへの書き込み後、保存値が一致しませんでした"}
+            except Exception as exc:
+                return {"error": f"Redis保存値の確認に失敗: {exc}"}
+        return {"tick": _logic_tick, "loop_hz": _logic_module.LOOP_HZ,
+                "angle_scale": scale, "redis_key": REDIS_KEY_WRITE,
+                "redis_written": True, "joints": joints}
 
 
 # バッファ変数
@@ -407,6 +530,10 @@ def background_motion_control():
     start_time = None
     
     while not stop_background:
+        if _logic_auto_active():
+            start_time = None
+            time.sleep(MOT_INTERVAL)
+            continue
         if MOT_STS == WALK:
             if start_time is None:
                 start_time = time.time()
@@ -512,6 +639,8 @@ def meridian_command(command, object, value):
     global MOT_STS, data, buf_output, buf_input, buf_index
 
     if(command == "walk"):
+        if _logic_auto_active():
+            return "PAD Override中はLogic_cartridgeが歩行関節を制御しています"
         walk_controller.start_walk()
         MOT_STS = WALK
         data = walk_controller.data
@@ -1290,6 +1419,7 @@ def main():
         # WalkControllerインスタンスを作成
         walk_controller = WalkController(params=params, params_link=params_link, msg_size=MSG_SIZE)
         start_background_thread()
+        start_logic_thread()
 
         print(f"[Info] Starting Gradio web interface...")
         #print(f"[Info] Redis config loaded from: {args.redis}")
