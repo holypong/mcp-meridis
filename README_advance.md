@@ -368,9 +368,10 @@ MCP ツール `set_params_text` で実行中に変更でき、`get_params_text` 
 
 | パラメータ | デフォルト | 説明 |
 |---|---|---|
-| `arm_swing_enable` | true | True: 位相連動腕振り / False: 肩ロール固定 |
-| `arm_swing_angle` | 5.0 deg | 腕振り角度振幅（False 時は肩ロール固定角） |
+| `arm_swing_enable` | true | True: 位相連動腕振り（肩ピッチ） / False: 肩ピッチ固定 |
+| `arm_swing_angle` | 5.0 deg | 腕振り角度振幅（肩ピッチ、`arm_swing_enable=True` 時のみ有効） |
 | `arm_swing_phase_offset` | 0.0 rad | 腕振り位相先行量（ヨー方向の角運動量を打ち消すための位相調整） |
+| `arm_roll_angle` | 5.0 deg | 歩行中の両肩ロール固定角（`arm_swing_enable` の値に関わらず常時適用） |
 
 ### ジャイロフィードバック
 

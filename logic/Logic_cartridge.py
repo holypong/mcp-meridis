@@ -981,35 +981,40 @@ WALK_PARAMS = {
     'frame_interval': 0.010,
     'phase_offset': 3.141592653589793,
     'init_wait_time': 0.0,
-    'landing_period_ratio': 0.10,
-    'end_of_simulation': 8.0,
-    'cycle_duration': 0.60,
-    'swing_ratio': 0.30,
     'foot_lift': 0.020,
     'hip_swing': 0.005,
-    'lateral_swing_ratio_1st': 0.8,
-    'forward_stride': 0.018,
     'duration': 5.0,
+    'cycle_duration': 0.60,
+    'lateral_swing_ratio_1st': 0.8,
+    'landing_period_ratio': 0.10,
+    'swing_ratio': 0.30,
+    'max_stride': 0.018,
+    'max_side_stride': 0.025,
+    'forward_stride': 0.018,
     'forward_lean_angle': 0.0,
-    'shoulder_roll_angle': 10.0,
-    'arm_swing_angle': 20.0,
+    'foot_swing_mode': 0,
     'smooth_stop': False,
+    'arm_swing_enable': False,
+    'arm_swing_angle': 20.0,
+    'arm_swing_phase_offset': 0.0,
+    'arm_roll_angle': 10.0,
     'mix_enable': False,
-    'mix_gyro_g': 0.001,
+    'mix_gyro_g_roll': 0.001,
+    'mix_gyro_g_pitch': 0.001,
     'term_foot_land': 0.18,
     'term_foot_weight_shift': 0.45,
     'term_land_stride': 0.18,
-    'foot_stride_max': 0.018,
-    'foot_side_max': 0.025,
 }
 
 # melissa_mjcf.xmlのbody posから算出した実リンク長。
 LINK_PARAMS = {
+    'HIP_OFFSET_Y': 0.0,
     'THIGH_LENGTH': 0.05961695,
     'SHANK_LENGTH': 0.05999871,
     'ANKLE_LENGTH': 0.0,
-    'ANKLE_TO_FOOT': 0.036,
+    'FOOT_OFFSET_Z': 0.036,
     'SHORTEN_LEG_LENGTH': 0.01840,
+    'FOOT_OFFSET_Y': 0.0,
 }
 
 STICK_DEAD = 0.12
@@ -1066,29 +1071,33 @@ class WalkParams:
     frame_interval: float            = _param_field(0.010, "1フレームあたりの時間間隔（固定）[秒]", "float")
     phase_offset: float              = _param_field(math.pi, "左右の足の位相差[rad]", "float")
     init_wait_time: float            = _param_field(0.0,  "初期待機時間[秒]", "float")
-    landing_period_ratio: float      = _param_field(0.10, "両足着地期間の比率", "float")
-    end_of_simulation: float         = _param_field(8.0,  "シミュレーション終了時間[秒]", "float")
-    cycle_duration: float            = _param_field(0.6,  "左右の軸足交代2回分の周期[秒]", "float")
-    swing_ratio: float               = _param_field(0.30, "重心移動終了と遊脚期間に共通で用いる周期比率", "float")
     foot_lift: float                 = _param_field(0.020, "遊脚の持ち上げ量[m]", "float")
     hip_swing: float                 = _param_field(0.015, "横方向のスイング量[m]", "float")
-    lateral_swing_ratio_1st: float   = _param_field(0.8,  "初期の重心移動時の横スイング倍率", "float")
-    forward_stride: float            = _param_field(0.02, "前後方向の歩幅[m]", "float")
     duration: float                  = _param_field(5.0,  "動作期間[秒]", "float")
+    cycle_duration: float            = _param_field(0.6,  "左右の軸足交代2回分の周期[秒]", "float")
+    lateral_swing_ratio_1st: float   = _param_field(0.8,  "初期の重心移動時の横スイング倍率", "float")
+    landing_period_ratio: float      = _param_field(0.10, "両足着地期間の比率", "float")
+    swing_ratio: float               = _param_field(0.30, "重心移動終了と遊脚期間に共通で用いる周期比率", "float")
+    max_stride: float                = _param_field(0.025, "前後移動最大[m]", "float")
+    max_side_stride: float           = _param_field(0.025, "左右移動最大[m]", "float")
+    forward_stride: float            = _param_field(0.02, "前後方向の歩幅[m]", "float")
     forward_lean_angle: float        = _param_field(0.0,  "歩行中の前傾角度[度] (0=直立、正値で前傾)", "float")
-    shoulder_roll_angle: float       = _param_field(10.0, "歩行中の両肩ロール角度[度]", "float")
-    arm_swing_angle: float           = _param_field(20.0, "歩行中の腕ピッチ振り幅[度]", "float")
+    foot_swing_mode: int             = _param_field(0, "遊脚軌道モード (0:正弦波, 1:サイクロイド)", "int")
     smooth_stop: bool                = _param_field(False, "停止時に一歩追加してから止まるか", "bool")
+    arm_swing_enable: bool           = _param_field(False, "腕振り制御有効フラグ (True:位相連動腕振り, False:肩ピッチ固定)", "bool")
+    arm_swing_angle: float           = _param_field(20.0, "歩行中の腕ピッチ振り幅[度]（arm_swing_enable=True時のみ有効）", "float")
+    arm_swing_phase_offset: float    = _param_field(0.0, "腕振り位相先行量[rad]（ヨー角運動量打ち消し用。0=同位相、π/4=45°先行、π/2=90°先行）", "float")
+    arm_roll_angle: float       = _param_field(10.0, "歩行中の両肩ロール角度[度]", "float")
     mix_enable: bool                 = _param_field(False, "ロール角を足首に反映するか", "bool")
-    mix_gyro_g: float                = _param_field(0.001, "ジャイロミキシングゲイン係数", "float")
+    mix_gyro_g_roll: float           = _param_field(0.001, "ジャイロミキシングゲイン係数（Roll/X軸）", "float")
+    mix_gyro_g_pitch: float          = _param_field(0.001, "ジャイロミキシングゲイン係数（Pitch/Y軸）", "float")
     term_foot_land: float            = _param_field(0.10, "着地期間比率", "float")
     term_foot_weight_shift: float    = _param_field(0.35, "重心移動期間比率", "float")
     term_land_stride: float          = _param_field(0.10, "前後/左右/旋回の着地期間比率", "float")
-    foot_stride_max: float             = _param_field(0.025, "前後移動最大[m]", "float")
-    foot_side_max: float            = _param_field(0.025, "左右移動最大[m]", "float")
 
 @dataclass
 class LinkParams:
+    HIP_OFFSET_Y: float           = _param_field(0.0, "腰中心から股関節ロール軸までのY方向オフセット[m]", "float")
     # melissa_mjcf.xml の左右脚body posから算出した実リンク長。
     # hip pitch→knee: hypot(0.014455, 0.057838)
     # knee→ankle pitch: hypot(0.022945, 0.055438)
@@ -1096,9 +1105,10 @@ class LinkParams:
     SHANK_LENGTH: float           = _param_field(0.05999871, "すねの長さ[m]", "float")
     # Melissaではankle pitchとfoot rollが同一位置。足裏はroll軸から36 mm下。
     ANKLE_LENGTH: float           = _param_field(0.0,   "足首ピッチから足首ロールまでの長さ[m]", "float")
-    ANKLE_TO_FOOT: float          = _param_field(0.036, "足首ロール軸から足裏までの距離[m]", "float")
+    FOOT_OFFSET_Z: float          = _param_field(0.036, "足首ロール軸から足裏までの距離[m]", "float")
     # ROID1の20 mmを脚リンク長比 (119.616/130.0) で縮尺。
     SHORTEN_LEG_LENGTH: float     = _param_field(0.01840, "短縮時の脚長[m]", "float")
+    FOOT_OFFSET_Y: float          = _param_field(0.0, "足首ロール軸から足裏中心までのY方向オフセット[m]", "float")
 
     @property
     def TOTAL_LEG_LENGTH(self):
@@ -1168,8 +1178,8 @@ class WalkController:
         return max(self.params.cycle_duration * 0.5, 1e-6)
 
     def set_walk_direction(self, fwd: float, lat: float, turn: float) -> None:
-        self.foot_direction["x"] = float(fwd) * self.params.foot_stride_max
-        self.foot_direction["y"] = float(lat) * self.params.foot_side_max
+        self.foot_direction["x"] = float(fwd) * self.params.max_stride
+        self.foot_direction["y"] = float(lat) * self.params.max_side_stride
         self.foot_direction["turn"] = float(turn) * MAX_TURN_STRIDE_DEG
 
     def hip_yaw_equivalent(self) -> float:
@@ -1292,6 +1302,10 @@ class WalkController:
         swing_end      = math.pi + swing_duration / 2
         if swing_start <= normalized_phase <= swing_end:
             swing_phase = (normalized_phase - swing_start) / swing_duration
+            if self.params.foot_swing_mode == 1:
+                # サイクロイド: versine プロファイル（着地直前速度ゼロ）
+                return step_height * (1.0 - math.cos(2.0 * math.pi * swing_phase)) / 2.0
+            # 正弦波 (mode=0, デフォルト)
             return step_height * math.sin(swing_phase * math.pi)
         return 0.0
 
@@ -1303,22 +1317,23 @@ class WalkController:
 
     def apply_gyro_mixing(self, data: list, r: list) -> None:
         """IMUジャイロ角速度を元に足首・股関節ピッチ/ロールを補正する。
-        WalkParams.mix_enable=True / mix_gyro_g で強度調整。
+        WalkParams.mix_enable=True / mix_gyro_g_roll・mix_gyro_g_pitch で強度調整。
         r は Meridim90 フィードバック配列 (r[5]=gx*100, r[6]=gy*100)。
         """
         if not self.params.mix_enable:
             return
-        g  = self.params.mix_gyro_g
+        g_roll  = self.params.mix_gyro_g_roll
+        g_pitch = self.params.mix_gyro_g_pitch
         gy = float(r[6]) / 100.0   # ピッチ角速度 [deg/s]
         gx = float(r[5]) / 100.0   # ロール角速度 [deg/s]
 
         # ピッチ補正 — 足首ピッチ + 股関節ピッチ (半強度)
-        pc = -gy * g
+        pc = -gy * g_pitch
         data[IDX_L_ANKLE_P]   += pc;      data[IDX_R_ANKLE_P]   += pc
         data[IDX_L_HIP_PITCH] += pc * 0.5; data[IDX_R_HIP_PITCH] += pc * 0.5
 
         # ロール補正 — 足首ロール (左右逆方向)
-        rc = gx * g
+        rc = gx * g_roll
         data[IDX_L_ANKLE_ROLL] +=  rc
         data[IDX_R_ANKLE_ROLL] -=  rc
 
@@ -1449,13 +1464,22 @@ class WalkController:
         if self.w_sts >= 1:
             self.data[IDX_C_CHEST - 1] = float(self.trq_on)
             self.data[IDX_C_CHEST] = waist_yaw_deg
-            self.data[24] = float(self.trq_on);  self.data[25] = float(p.shoulder_roll_angle)
-            self.data[54] = float(self.trq_on);  self.data[55] = float(p.shoulder_roll_angle)
+            self.data[24] = float(self.trq_on);  self.data[25] = float(p.arm_roll_angle)
+            self.data[54] = float(self.trq_on);  self.data[55] = float(p.arm_roll_angle)
             self.data[28] = float(self.trq_on);  self.data[29] = -90.0
             self.data[58] = float(self.trq_on);  self.data[59] = -90.0
-            #歩行時の両肩のピッチ軸のベースを20度にしたい
-            self.data[22] = float(self.trq_on);  self.data[23] = 20.0
-            self.data[52] = float(self.trq_on);  self.data[53] = 20.0
+            if self.w_sts >= 3 and p.arm_swing_enable:
+                # 肩ピッチ位相連動腕振り。左腕は右脚と同位相（逆位相差π）、右腕は左脚と同位相。
+                # arm_swing_phase_offsetでヨー角運動量打ち消し用に位相を先行させる。
+                phase_arm = phase_z + p.arm_swing_phase_offset
+                l_pitch = p.arm_swing_angle * math.sin(phase_arm + math.pi)
+                r_pitch = p.arm_swing_angle * math.sin(phase_arm)
+                self.data[22] = float(self.trq_on);  self.data[23] = float(l_pitch)
+                self.data[52] = float(self.trq_on);  self.data[53] = float(r_pitch)
+            else:
+                #歩行時の両肩のピッチ軸のベースを20度にしたい
+                self.data[22] = float(self.trq_on);  self.data[23] = 20.0
+                self.data[52] = float(self.trq_on);  self.data[53] = 20.0
 
     def update_walking_state(self):
         p = self.params

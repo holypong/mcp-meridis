@@ -370,9 +370,10 @@ Walking parameters are written in `walkparam.json` and loaded at startup. They c
 
 | Parameter | Default | Description |
 |---|---|---|
-| `arm_swing_enable` | true | True: phase-linked arm swing / False: fixed shoulder roll |
-| `arm_swing_angle` | 5.0 deg | Arm-swing angle amplitude. When False, fixed shoulder-roll angle |
+| `arm_swing_enable` | true | True: phase-linked shoulder-pitch arm swing / False: fixed shoulder pitch |
+| `arm_swing_angle` | 5.0 deg | Arm-swing (shoulder-pitch) angle amplitude, effective only when `arm_swing_enable=True` |
 | `arm_swing_phase_offset` | 0.0 rad | Arm-swing phase lead, phase adjustment to cancel angular momentum around the yaw axis |
+| `arm_roll_angle` | 5.0 deg | Fixed shoulder-roll angle during walk, applied regardless of `arm_swing_enable` |
 
 ### Gyro Feedback
 

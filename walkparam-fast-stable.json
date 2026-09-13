@@ -16,6 +16,7 @@
   "arm_swing_enable": true,
   "arm_swing_angle": 5.0,
   "arm_swing_phase_offset": 0.0,
+  "arm_roll_angle": 5.0,
   "mix_enable": false,
   "mix_gyro_g_roll": 0.0001,
   "mix_gyro_g_pitch": 0.0002

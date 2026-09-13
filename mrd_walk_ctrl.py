@@ -29,8 +29,9 @@ class WalkParams:
     foot_swing_mode: int = param_field(0, "遊脚軌道モード (0:正弦波, 1:サイクロイド)", "int")
     smooth_stop: bool = param_field(False, "停止時に自動で一歩追加してその場足踏みするか", "bool")
     arm_swing_enable: bool = param_field(False, "腕振り制御有効フラグ (True:位相連動腕振り, False:固定角度)", "bool")
-    arm_swing_angle: float = param_field(10.0, "腕振り角度振幅[度]（arm_swing_enable=False時は肩ロール固定角、True時は肩ピッチ振幅）", "float")
+    arm_swing_angle: float = param_field(10.0, "腕振り角度振幅[度]（肩ピッチ振幅、arm_swing_enable=True時のみ有効）", "float")
     arm_swing_phase_offset: float = param_field(0.0, "腕振り位相先行量[rad]（ヨー角運動量打ち消し用。0=同位相、π/4=45°先行、π/2=90°先行）", "float")
+    arm_roll_angle: float = param_field(10.0, "歩行中の両肩ロール角度[度]（固定角）", "float")
     mix_enable: bool = param_field(False, "ロール角を足首に反映するか", "bool")
     mix_gyro_g_roll:  float = param_field(0.0001, "ジャイロミキシングゲイン係数（Roll/X軸）", "float")
     mix_gyro_g_pitch: float = param_field(0.0002, "ジャイロミキシングゲイン係数（Pitch/Y軸）", "float")
@@ -474,15 +475,15 @@ class WalkController:
                 self.data[53] = float(arm_amp * np.sin(phase_arm))           # R_SHOULDER_P_VAL
                 # 肩ロールはパラメータ指定の固定角を維持
                 self.data[24] = float(self.trq_on)
-                self.data[25] = float(self.params.arm_swing_angle)
+                self.data[25] = float(self.params.arm_roll_angle)
                 self.data[54] = float(self.trq_on)
-                self.data[55] = float(self.params.arm_swing_angle)
+                self.data[55] = float(self.params.arm_roll_angle)
             else:
                 # 固定ロール角（従来動作 / arm_swing_enable=False）
                 self.data[24] = float(self.trq_on)   # L_SHOULDER_R_CMD
-                self.data[25] = float(self.params.arm_swing_angle)  # L_SHOULDER_R_VAL
+                self.data[25] = float(self.params.arm_roll_angle)  # L_SHOULDER_R_VAL
                 self.data[54] = float(self.trq_on)   # R_SHOULDER_R_CMD
-                self.data[55] = float(self.params.arm_swing_angle)  # R_SHOULDER_R_VAL
+                self.data[55] = float(self.params.arm_roll_angle)  # R_SHOULDER_R_VAL
 
         # Redisからデータを受信（オプション）
         get_data = None
