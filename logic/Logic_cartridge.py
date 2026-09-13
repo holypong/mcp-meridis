@@ -982,10 +982,9 @@ WALK_PARAMS = {
     'phase_offset': 3.141592653589793,
     'init_wait_time': 0.0,
     'landing_period_ratio': 0.10,
-    'weight_shift_duration_ratio': 0.30,
     'end_of_simulation': 8.0,
     'cycle_duration': 0.60,
-    'swing_ratio': 0.4,
+    'swing_ratio': 0.30,
     'foot_lift': 0.020,
     'hip_swing': 0.005,
     'lateral_swing_ratio_1st': 0.8,
@@ -1068,10 +1067,9 @@ class WalkParams:
     phase_offset: float              = _param_field(math.pi, "左右の足の位相差[rad]", "float")
     init_wait_time: float            = _param_field(0.0,  "初期待機時間[秒]", "float")
     landing_period_ratio: float      = _param_field(0.10, "両足着地期間の比率", "float")
-    weight_shift_duration_ratio: float = _param_field(0.25, "重心移動期間の比率", "float")
     end_of_simulation: float         = _param_field(8.0,  "シミュレーション終了時間[秒]", "float")
     cycle_duration: float            = _param_field(0.6,  "左右の軸足交代2回分の周期[秒]", "float")
-    swing_ratio: float               = _param_field(0.4,  "遊脚期間の比率 (0.0-1.0、推奨0.4)", "float")
+    swing_ratio: float               = _param_field(0.30, "重心移動終了と遊脚期間に共通で用いる周期比率", "float")
     foot_lift: float                 = _param_field(0.020, "遊脚の持ち上げ量[m]", "float")
     hip_swing: float                 = _param_field(0.015, "横方向のスイング量[m]", "float")
     lateral_swing_ratio_1st: float   = _param_field(0.8,  "初期の重心移動時の横スイング倍率", "float")
@@ -1365,12 +1363,12 @@ class WalkController:
             r_ang = self.geometric_leg_ik(r_pos, is_left=False)
         else:
             phase_y = 2 * math.pi * ((self.t - p.init_wait_time) / p.cycle_duration)
-            phase_z = 2 * math.pi * ((self.t - (p.init_wait_time + p.cycle_duration * p.weight_shift_duration_ratio)) / p.cycle_duration)
+            phase_z = 2 * math.pi * ((self.t - (p.init_wait_time + p.cycle_duration * p.swing_ratio)) / p.cycle_duration)
             if self.w_sts == 2:
                 lat = p.hip_swing * math.sin(phase_y) * p.lateral_swing_ratio_1st
                 l_fw = r_fw = l_lift = r_lift = 0.0
             else:
-                gait_start = p.init_wait_time + p.cycle_duration * p.weight_shift_duration_ratio
+                gait_start = p.init_wait_time + p.cycle_duration * p.swing_ratio
                 startup_gain = self._smoothstep((self.t - gait_start) / p.cycle_duration)
                 norm_z = ((phase_z % (2 * math.pi)) + 2 * math.pi) % (2 * math.pi)
                 at_start = norm_z < 0.3 * math.pi
@@ -1465,7 +1463,7 @@ class WalkController:
             self.w_sts = 0
         elif self.t < p.init_wait_time + p.cycle_duration * p.landing_period_ratio:
             self.w_sts = 1
-        elif self.t < p.init_wait_time + p.cycle_duration * p.weight_shift_duration_ratio:
+        elif self.t < p.init_wait_time + p.cycle_duration * p.swing_ratio:
             self.w_sts = 2
         else:
             self.w_sts = 3
