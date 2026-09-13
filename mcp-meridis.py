@@ -749,10 +749,10 @@ def background_motion_control():
             # 安全停止要求チェック (B2修正): その場足踏み経由でサイクル完了時に停止
             if walk_controller.stop_requested:
                 can_stop = False
-                if t < params.init_wait_time + params.cycle_duration * params.weight_shift_duration_ratio:
+                if t < params.init_wait_time + params.cycle_duration * params.swing_ratio:
                     can_stop = True  # 遊脚前なので即停止可
                 else:
-                    phase_z = 2 * np.pi * ((t - (params.init_wait_time + params.cycle_duration * params.weight_shift_duration_ratio)) / params.cycle_duration)
+                    phase_z = walk_controller.gait_phase(t)
                     
                     # smooth_stop設定に応じた停止条件
                     if params.smooth_stop:
@@ -772,7 +772,7 @@ def background_motion_control():
             # duration指定があれば自動停止
             if params.duration and t >= params.duration:
                 if t >= params.init_wait_time:
-                    phase_z = 2 * np.pi * ((t - (params.init_wait_time + params.cycle_duration * params.weight_shift_duration_ratio)) / params.cycle_duration)
+                    phase_z = walk_controller.gait_phase(t)
                     swing_duration = params.swing_ratio * 2.0 * np.pi
                     swing_start = np.pi - swing_duration / 2
                     swing_end = np.pi + swing_duration / 2

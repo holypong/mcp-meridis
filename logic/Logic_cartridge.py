@@ -982,7 +982,6 @@ WALK_PARAMS = {
     'phase_offset': 3.141592653589793,
     'init_wait_time': 0.0,
     'landing_period_ratio': 0.10,
-    'weight_shift_duration_ratio': 0.30,
     'end_of_simulation': 8.0,
     'cycle_duration': 0.60,
     'swing_ratio': 0.4,
@@ -992,15 +991,12 @@ WALK_PARAMS = {
     'forward_stride': 0.018,
     'duration': 5.0,
     'forward_lean_angle': 0.0,
-    'shoulder_roll_angle': 10.0,
-    'arm_swing_angle': 20.0,
+    'arm_swing_angle': 10.0,
     'smooth_stop': False,
     'mix_enable': False,
-    'mix_gyro_g': 0.001,
-    'term_foot_land': 0.18,
-    'term_foot_weight_shift': 0.45,
-    'term_land_stride': 0.18,
-    'foot_stride_max': 0.018,
+    'mix_gyro_g_roll': 0.001,
+    'mix_gyro_g_pitch': 0.001,
+    'max_stride': 0.045,
     'foot_side_max': 0.025,
 }
 
@@ -1016,9 +1012,6 @@ LINK_PARAMS = {
 STICK_DEAD = 0.12
 SIDE_STICK_THRESH = 90 / 127.0
 TURN_STICK_DEAD = 0.15
-FOOT_SLIDE_MAX_FWD = 0.070
-WALK_STRIDE_RATIO = 0.50
-MAX_FWD_STRIDE = FOOT_SLIDE_MAX_FWD * WALK_STRIDE_RATIO
 MAX_TURN_STRIDE_DEG = 30.0
 MAX_ARM_PITCH_DEG = 15.0
 WALK_JOINT_SPEED_FRACTION = 1.0
@@ -1068,7 +1061,6 @@ class WalkParams:
     phase_offset: float              = _param_field(math.pi, "左右の足の位相差[rad]", "float")
     init_wait_time: float            = _param_field(0.0,  "初期待機時間[秒]", "float")
     landing_period_ratio: float      = _param_field(0.10, "両足着地期間の比率", "float")
-    weight_shift_duration_ratio: float = _param_field(0.25, "重心移動期間の比率", "float")
     end_of_simulation: float         = _param_field(8.0,  "シミュレーション終了時間[秒]", "float")
     cycle_duration: float            = _param_field(0.6,  "左右の軸足交代2回分の周期[秒]", "float")
     swing_ratio: float               = _param_field(0.4,  "遊脚期間の比率 (0.0-1.0、推奨0.4)", "float")
@@ -1076,17 +1068,14 @@ class WalkParams:
     hip_swing: float                 = _param_field(0.015, "横方向のスイング量[m]", "float")
     lateral_swing_ratio_1st: float   = _param_field(0.8,  "初期の重心移動時の横スイング倍率", "float")
     forward_stride: float            = _param_field(0.02, "前後方向の歩幅[m]", "float")
+    max_stride: float                = _param_field(0.045, "前後方向の最大歩幅[m]", "float")
     duration: float                  = _param_field(5.0,  "動作期間[秒]", "float")
     forward_lean_angle: float        = _param_field(0.0,  "歩行中の前傾角度[度] (0=直立、正値で前傾)", "float")
-    shoulder_roll_angle: float       = _param_field(10.0, "歩行中の両肩ロール角度[度]", "float")
-    arm_swing_angle: float           = _param_field(20.0, "歩行中の腕ピッチ振り幅[度]", "float")
+    arm_swing_angle: float           = _param_field(10.0, "歩行中の肩ロール固定角[度]", "float")
     smooth_stop: bool                = _param_field(False, "停止時に一歩追加してから止まるか", "bool")
     mix_enable: bool                 = _param_field(False, "ロール角を足首に反映するか", "bool")
-    mix_gyro_g: float                = _param_field(0.001, "ジャイロミキシングゲイン係数", "float")
-    term_foot_land: float            = _param_field(0.10, "着地期間比率", "float")
-    term_foot_weight_shift: float    = _param_field(0.35, "重心移動期間比率", "float")
-    term_land_stride: float          = _param_field(0.10, "前後/左右/旋回の着地期間比率", "float")
-    foot_stride_max: float             = _param_field(0.025, "前後移動最大[m]", "float")
+    mix_gyro_g_roll: float           = _param_field(0.001, "ロール軸のジャイロミキシングゲイン", "float")
+    mix_gyro_g_pitch: float          = _param_field(0.001, "ピッチ軸のジャイロミキシングゲイン", "float")
     foot_side_max: float            = _param_field(0.025, "左右移動最大[m]", "float")
 
 @dataclass
@@ -1156,10 +1145,6 @@ class WalkController:
         self.stop_background   = False
 
     @staticmethod
-    def _clamp(v: float, lo: float, hi: float) -> float:
-        return max(lo, min(hi, v))
-
-    @staticmethod
     def _smoothstep(v: float) -> float:
         v = max(0.0, min(1.0, v))
         return v * v * (3.0 - 2.0 * v)
@@ -1169,17 +1154,24 @@ class WalkController:
         """軸足を1回交代する時間。全歩行周期の半分。"""
         return max(self.params.cycle_duration * 0.5, 1e-6)
 
+    def _gait_phase_bounds(self) -> tuple[float, float, float]:
+        """半周期の着地終端、重心移動終端、遊脚終端を共通比率から求める。"""
+        swing = self.params.swing_ratio
+        if swing <= 0.0 or swing > 0.5:
+            raise ValueError("swing_ratio は0より大きく0.5以下にしてください")
+        land = (1.0 - 2.0 * swing) / 2.0
+        return land, land + swing, 1.0 - land
+
     def set_walk_direction(self, fwd: float, lat: float, turn: float) -> None:
-        self.foot_direction["x"] = float(fwd) * self.params.foot_stride_max
+        stride = min(abs(self.params.forward_stride), self.params.max_stride)
+        self.foot_direction["x"] = float(fwd) * stride
         self.foot_direction["y"] = float(lat) * self.params.foot_side_max
         self.foot_direction["turn"] = float(turn) * MAX_TURN_STRIDE_DEG
 
     def hip_yaw_equivalent(self) -> float:
         """RX+は右、RX-は左のROID1股関節ヨー相当値[deg]を返す。"""
-        p = self.params
         phase = self.fwct_time / self.walk_cycle_time
-        ls = self._clamp(p.term_land_stride, 0.01, 0.45)
-        le = 1.0 - ls
+        ls, _, le = self._gait_phase_bounds()
         turn = self.foot_direction["turn"]
         if turn == 0.0:
             return 0.0
@@ -1202,18 +1194,16 @@ class WalkController:
         return math.copysign(value, turn)
 
     def foot_up(self) -> None:
-        p = self.params
         cycle = self.walk_cycle_time
         phase = self.fwct_time / cycle
-        land = self._clamp(p.term_foot_land, 0.01, 0.45)
-        weight = self._clamp(p.term_foot_weight_shift, land, 0.9)
+        land, weight, swing_end = self._gait_phase_bounds()
 
         if phase <= land:
             self.foot_h = 0.0
         elif phase <= weight:
             self.foot_h = 0.0
-        elif phase <= 1.0 - land:
-            denom = max((1.0 - land) - weight, 1e-6)
+        elif phase <= swing_end:
+            denom = swing_end - weight
             k = (phase - weight) / denom
             self.foot_h = self.foot_h_max * math.sin(math.pi * k)
         else:
@@ -1222,11 +1212,9 @@ class WalkController:
             self.foot_h = self.foot_h_max * 0.3 * math.sin(math.pi * k)
 
     def feet_direction_x(self) -> None:
-        p = self.params
         cycle = self.walk_cycle_time
         phase = self.fwct_time / cycle
-        ls = self._clamp(p.term_land_stride, 0.01, 0.45)
-        le = 1.0 - ls
+        ls, _, le = self._gait_phase_bounds()
         x = self.foot_direction["x"]
 
         # 軸足は +x→-x、遊脚は -x→+x。交代時には互いの終点が次の始点となる。
@@ -1235,11 +1223,9 @@ class WalkController:
         self.sw_leg["x"] = x * (2.0 * swing - 1.0)
 
     def feet_direction_y(self) -> None:
-        p = self.params
         cycle = self.walk_cycle_time
         phase = self.fwct_time / cycle
-        ls = self._clamp(p.term_land_stride, 0.01, 0.45)
-        le = 1.0 - ls
+        ls, _, le = self._gait_phase_bounds()
         y = self.foot_direction["y"]
 
         self.r_foot["y"] = 0.0
@@ -1305,22 +1291,23 @@ class WalkController:
 
     def apply_gyro_mixing(self, data: list, r: list) -> None:
         """IMUジャイロ角速度を元に足首・股関節ピッチ/ロールを補正する。
-        WalkParams.mix_enable=True / mix_gyro_g で強度調整。
+        WalkParams.mix_enable=True / mix_gyro_g_roll, mix_gyro_g_pitch で強度調整。
         r は Meridim90 フィードバック配列 (r[5]=gx*100, r[6]=gy*100)。
         """
         if not self.params.mix_enable:
             return
-        g  = self.params.mix_gyro_g
+        g_roll = self.params.mix_gyro_g_roll
+        g_pitch = self.params.mix_gyro_g_pitch
         gy = float(r[6]) / 100.0   # ピッチ角速度 [deg/s]
         gx = float(r[5]) / 100.0   # ロール角速度 [deg/s]
 
         # ピッチ補正 — 足首ピッチ + 股関節ピッチ (半強度)
-        pc = -gy * g
+        pc = -gy * g_pitch
         data[IDX_L_ANKLE_P]   += pc;      data[IDX_R_ANKLE_P]   += pc
         data[IDX_L_HIP_PITCH] += pc * 0.5; data[IDX_R_HIP_PITCH] += pc * 0.5
 
         # ロール補正 — 足首ロール (左右逆方向)
-        rc = gx * g
+        rc = gx * g_roll
         data[IDX_L_ANKLE_ROLL] +=  rc
         data[IDX_R_ANKLE_ROLL] -=  rc
 
@@ -1365,12 +1352,12 @@ class WalkController:
             r_ang = self.geometric_leg_ik(r_pos, is_left=False)
         else:
             phase_y = 2 * math.pi * ((self.t - p.init_wait_time) / p.cycle_duration)
-            phase_z = 2 * math.pi * ((self.t - (p.init_wait_time + p.cycle_duration * p.weight_shift_duration_ratio)) / p.cycle_duration)
+            phase_z = 2 * math.pi * ((self.t - (p.init_wait_time + p.cycle_duration * p.swing_ratio)) / p.cycle_duration)
             if self.w_sts == 2:
                 lat = p.hip_swing * math.sin(phase_y) * p.lateral_swing_ratio_1st
                 l_fw = r_fw = l_lift = r_lift = 0.0
             else:
-                gait_start = p.init_wait_time + p.cycle_duration * p.weight_shift_duration_ratio
+                gait_start = p.init_wait_time + p.cycle_duration * p.swing_ratio
                 startup_gain = self._smoothstep((self.t - gait_start) / p.cycle_duration)
                 norm_z = ((phase_z % (2 * math.pi)) + 2 * math.pi) % (2 * math.pi)
                 at_start = norm_z < 0.3 * math.pi
@@ -1451,8 +1438,8 @@ class WalkController:
         if self.w_sts >= 1:
             self.data[IDX_C_CHEST - 1] = float(self.trq_on)
             self.data[IDX_C_CHEST] = waist_yaw_deg
-            self.data[24] = float(self.trq_on);  self.data[25] = float(p.shoulder_roll_angle)
-            self.data[54] = float(self.trq_on);  self.data[55] = float(p.shoulder_roll_angle)
+            self.data[24] = float(self.trq_on);  self.data[25] = float(p.arm_swing_angle)
+            self.data[54] = float(self.trq_on);  self.data[55] = float(p.arm_swing_angle)
             self.data[28] = float(self.trq_on);  self.data[29] = -90.0
             self.data[58] = float(self.trq_on);  self.data[59] = -90.0
             #歩行時の両肩のピッチ軸のベースを20度にしたい
@@ -1465,7 +1452,7 @@ class WalkController:
             self.w_sts = 0
         elif self.t < p.init_wait_time + p.cycle_duration * p.landing_period_ratio:
             self.w_sts = 1
-        elif self.t < p.init_wait_time + p.cycle_duration * p.weight_shift_duration_ratio:
+        elif self.t < p.init_wait_time + p.cycle_duration * p.swing_ratio:
             self.w_sts = 2
         else:
             self.w_sts = 3
@@ -1560,10 +1547,6 @@ def walk_ik_step() -> None:
             walk.stop_requested = False
             walk.use_zero_stride = False
             walk.start_walk(lx=lat, rx=turn)
-        raw_fwd = fwd * MAX_FWD_STRIDE
-        walk.params.forward_stride = max(
-            -FOOT_SLIDE_MAX_FWD, min(FOOT_SLIDE_MAX_FWD, raw_fwd)
-        )
         walk.set_walk_direction(fwd, lat, turn)
         walk.update_walking_state()
         walk.compute_walking_pose()

@@ -16,22 +16,21 @@ def param_field(default, description, type_):
 class WalkParams:
     phase_offset: float = param_field(np.pi, "左右の足の位相差[rad]", "float")
     init_wait_time: float = param_field(0.0, "初期待機時間[秒]", "float")
-    landing_period_ratio: float = param_field(0.10, "両足着地期間の比率 (周期の%、atm_uvc: TERM_FOOT_LAND)", "float")
-    weight_shift_duration_ratio: float = param_field(0.25, "重心移動期間の比率 (周期の%)", "float")
-    cycle_duration: float = param_field(1.6, "1周期の時間[秒]", "float")
-    swing_ratio: float = param_field(0.4, "遊脚期間の比率 (0.0-1.0、推奨0.4)", "float")
     foot_lift: float = param_field(0.014, "遊脚の持ち上げ量[m]", "float")
     hip_swing: float = param_field(0.018, "横方向のスイング量[m]", "float")
-    lateral_swing_ratio_1st: float = param_field(0.8, "初期の重心移動時の横スイング倍率", "float")    
-    forward_stride: float = param_field(0.02, "前後方向の歩幅[m]", "float")
-    max_stride: float = param_field(0.045, "前後方向の最大歩幅[m]", "float")
     duration: float = param_field(8.0, "動作期間[秒]", "float")
+    cycle_duration: float = param_field(1.6, "1周期の時間[秒]", "float")
+    lateral_swing_ratio_1st: float = param_field(0.8, "初期の重心移動時の横スイング倍率", "float")    
+    landing_period_ratio: float = param_field(0.10, "両足着地期間の比率 (周期の%、atm_uvc: TERM_FOOT_LAND)", "float")
+    swing_ratio: float = param_field(0.4, "遊脚期間と歩行開始時の重心移動終了時刻の比率 (0.0-1.0)", "float")
+    max_stride: float = param_field(0.045, "前後方向の最大歩幅[m]", "float")
+    forward_stride: float = param_field(0.02, "前後方向の歩幅[m]", "float")
     forward_lean_angle: float = param_field(0.0, "歩行中の前傾角度[度]", "float")
+    foot_swing_mode: int = param_field(0, "遊脚軌道モード (0:正弦波, 1:サイクロイド)", "int")
+    smooth_stop: bool = param_field(False, "停止時に自動で一歩追加してその場足踏みするか", "bool")
+    arm_swing_enable: bool = param_field(False, "腕振り制御有効フラグ (True:位相連動腕振り, False:固定角度)", "bool")
     arm_swing_angle: float = param_field(10.0, "腕振り角度振幅[度]（arm_swing_enable=False時は肩ロール固定角、True時は肩ピッチ振幅）", "float")
     arm_swing_phase_offset: float = param_field(0.0, "腕振り位相先行量[rad]（ヨー角運動量打ち消し用。0=同位相、π/4=45°先行、π/2=90°先行）", "float")
-    foot_swing_mode: int = param_field(0, "遊脚軌道モード (0:正弦波, 1:サイクロイド)", "int")
-    arm_swing_enable: bool = param_field(False, "腕振り制御有効フラグ (True:位相連動腕振り, False:固定角度)", "bool")
-    smooth_stop: bool = param_field(False, "停止時に自動で一歩追加してその場足踏みするか", "bool")
     mix_enable: bool = param_field(False, "ロール角を足首に反映するか", "bool")
     mix_gyro_g_roll:  float = param_field(0.0001, "ジャイロミキシングゲイン係数（Roll/X軸）", "float")
     mix_gyro_g_pitch: float = param_field(0.0002, "ジャイロミキシングゲイン係数（Pitch/Y軸）", "float")
@@ -221,6 +220,11 @@ class WalkController:
         else:
             return 0.0
 
+    def gait_phase(self, t):
+        """左支持への重心移動後、右足の遊脚開始点から歩行を始める。"""
+        gait_start = self.params.init_wait_time + self.params.cycle_duration * self.params.swing_ratio
+        return 2 * np.pi * (t - gait_start) / self.params.cycle_duration - np.pi * self.params.swing_ratio
+
     def calculate_forward_motion(self, phase, step_length):
         """
         前後方向の移動量を計算する関数
@@ -342,20 +346,25 @@ class WalkController:
 
         else:
             # 歩行動作
-            phase_y = 2 * np.pi * ((self.t - self.params.init_wait_time) / self.params.cycle_duration)
-            phase_z = 2 * np.pi * ((self.t - (self.params.init_wait_time + self.params.cycle_duration * self.params.weight_shift_duration_ratio)) / self.params.cycle_duration)
+            landing_end = self.params.init_wait_time + self.params.cycle_duration * self.params.landing_period_ratio
+            gait_start = self.params.init_wait_time + self.params.cycle_duration * self.params.swing_ratio
+            support_phase_start = np.pi * (0.5 - self.params.swing_ratio)
+            phase_z = self.gait_phase(self.t)
 
             if self.w_sts == 2:
+                shift_progress = np.clip((self.t - landing_end) / max(gait_start - landing_end, 1e-9), 0.0, 1.0)
+                phase_y = support_phase_start * shift_progress
                 lateral_swing = self.params.hip_swing * np.sin(phase_y) * self.params.lateral_swing_ratio_1st
                 l_foot_swing = 0
                 r_foot_swing = 0
                 l_forward = 0
                 r_forward = 0
             else:
-                # 重心移動から定常歩行への切替では、右足の位相が遊脚の頂点に
-                # 当たる。最初の1周期で足上げ・前後移動を連続的に立ち上げる。
-                gait_start = self.params.init_wait_time + self.params.cycle_duration * self.params.weight_shift_duration_ratio
-                startup_progress = np.clip((self.t - gait_start) / self.params.cycle_duration, 0.0, 1.0)
+                # 重心移動から歩行への切替を右足の遊脚開始点に合わせる。
+                # 最初の右足遊脚の頂点までに足上げ・前後移動を連続的に立ち上げる。
+                phase_y = support_phase_start + 2 * np.pi * (self.t - gait_start) / self.params.cycle_duration
+                startup_time = self.params.cycle_duration * self.params.swing_ratio * 0.5
+                startup_progress = np.clip((self.t - gait_start) / max(startup_time, 1e-9), 0.0, 1.0)
                 startup_gain = startup_progress * startup_progress * (3.0 - 2.0 * startup_progress)
                 # サイクル開始位相の検出（位相が0～0.3πの範囲にいるか）
                 normalized_phase_z = ((phase_z % (2 * np.pi)) + 2 * np.pi) % (2 * np.pi)
@@ -443,7 +452,7 @@ class WalkController:
             if self.w_sts >= 3 and self.params.arm_swing_enable:
                 # 肩ピッチ位相連動腕振り（自然歩行の角運動量補償）
                 # 左腕は右脚と同位相（逆位相差 π）、右腕は左脚と同位相
-                phase_z = 2 * np.pi * ((self.t - (self.params.init_wait_time + self.params.cycle_duration * self.params.weight_shift_duration_ratio)) / self.params.cycle_duration)
+                phase_z = self.gait_phase(self.t)
 
                 # 停止タイミングで1サイクルかけて振幅をフェードアウト
                 # トリガー: duration残り1サイクル以下 または 手動停止(use_zero_stride)
@@ -519,9 +528,9 @@ class WalkController:
                 self.buf_index = 0
         elif self.t >= self.params.init_wait_time and self.t < (self.params.init_wait_time + self.params.cycle_duration * self.params.landing_period_ratio):
             self.w_sts = 1
-        elif self.t >= (self.params.init_wait_time + self.params.cycle_duration * self.params.landing_period_ratio) and self.t < (self.params.init_wait_time + self.params.cycle_duration * self.params.weight_shift_duration_ratio):
+        elif self.t >= (self.params.init_wait_time + self.params.cycle_duration * self.params.landing_period_ratio) and self.t < (self.params.init_wait_time + self.params.cycle_duration * self.params.swing_ratio):
             self.w_sts = 2
-        elif self.t >= (self.params.init_wait_time + self.params.cycle_duration * self.params.weight_shift_duration_ratio):
+        elif self.t >= (self.params.init_wait_time + self.params.cycle_duration * self.params.swing_ratio):
             self.w_sts = 3
 
     def start_walk(self):
